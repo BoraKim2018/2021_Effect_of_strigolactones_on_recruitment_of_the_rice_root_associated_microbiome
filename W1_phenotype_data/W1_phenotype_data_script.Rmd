@@ -132,7 +132,7 @@ foSLs<-subset(meta, Soil_compartment=="Fo_RS"&SL_analysis=="yes")
 
 ### 3.1. Principle component analysis on three endogenous SLs
 
-```{r echo=TRUE}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 foSLs<-subset(meta, Soil_compartment=="Fo_RS"&SL_analysis=="yes") 
 foSLs<-subset(meta, Soil_compartment=="Fo_RS"&SL_analysis=="yes") 
 foSLs_pca<-prcomp(foSLs[11:13], scale. = T)
@@ -155,7 +155,7 @@ foSLs_dunn[1:5,1:4]
 
 Perfom Dunn test using loop. As level of MeO5DS was not significantly different among genotype, it was excluded. 
 
-```{r echo=TRUE}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 indices=2 
 Z<-as.data.frame(matrix(NA, 36, indices)) #results list =36
