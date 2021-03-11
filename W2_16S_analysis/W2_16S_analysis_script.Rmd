@@ -1,0 +1,1018 @@
+---
+title: "W2. 16S analysis"
+author: "Bora Kim"
+date: "March 4, 2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+This is meant for sharing dataset and script of the publication "Strigolactone_structural specificity in microbiome recruitment in rice, 2021". This markdown contains the process of 16S amplicon sequencing from rhizosphere and roots of 16 rice genotypes grown on two natural soils for 31 days.To begin with, raw 16S amplicon sequence has been reposited in SRA database under accession number:
+In W2 workflow, there are 6 big main steps as: Processing sequencing data -> alpha diversity -> beta diversity -> effect of SLs on alpha diversity and beta diversity -> Picrust2 -> prepare datasets for correlation study with SLs (W4). Unfortunately, this markdown was written after processing raw sequencing data in the former expired sever from University of Amsterdam. Therefore, in this markdown, the code (this markdown), final outputs of DADA2 (R image "W2_16S_analaysis_image.Rdata") are shared for sequencing processing step, but intermediate results won't be shown. Rest of data analysis parts with all intermediate objects and results after DADA2 step will be full shared. 
+
+
+## 1. Processing 16S amplicon sequencing (Illumina Miseq)
+The primers used in this study amplified V3-V4 16S region as below:
+Forward 341F- CCTACGGGNBGCASCAG
+Reverse 806R- GGACTACNVGGGTWTCTAAT
+
+Because DNA are amplified after primer region, you would only find 5'-[your reads]-[R1 adapter, reverse-complement R2 primer, and etc]-3'.
+In my case, more specifically 5'-[reads]-[reverse-complement R2 primer]-[link]-[pad]-[index]-[i7 adapter]-3'.
+Therefore, I needed to remove reverse-complement primer and adapter at the 3'end.
+
+Trimming 16S V3-V4
+Adapter      GGCTGACTGACT Read 1 trimming
+AdapterRead2 CCAATTACCATA Read 2 trimming
+Reverse-complement R2 primer ATTAGAWACCCBNGTAGTCC for R1 read trimming 
+Reverse-complement R1 primer CTGSTGCVNCCCGTAGG    for R2 read trimming 
+
+
+### 1.1. Remove primer and adapter sequence in raw sequencing data
+
+I used software called 'Cutadapt' employed in linux environmnet. First I removed reverse-complement primer parts as: 
+
+```{r eval=FALSE}
+for=(*R1_001.fastq.gz) #forward files
+rev=(*R2_001.fastq.gz) #reverse files
+for ((i=0; i<${#for[*]}; i++)) # iterates over the forward reads array
+  do
+  fullname=$(basename -- ${for[i]})
+  sample="${fullname%_S[0-9+]*}"
+  echo "processing" $sample
+  trimmed_for="$sample""_R1_trim.fastq"
+  trimmed_rev="$sample""_R2_trim.fastq"
+  echo $trimmed_for
+  cutadapt -a ATTAGAWACCCBNGTAGTCC -A CTGSTGCVNCCCGTAGG --no-indels -o $trimmed_for -p $trimmed_rev ${for[i]} ${rev[i]} -m 1 --cores 5
+  done
+  
+```
+
+The outputs were moved to new directory and there, I trmmed again the adapter sequence as:  
+  
+```{r eval=FALSE}
+for=(*R1_trim.fastq) #forward files
+  rev=(*R2_trim.fastq) #reverse files
+  for ((i=0; i<${#for[*]}; i++)) # iterates over the forward reads array
+    do
+    fullname=$(basename -- ${for[i]})
+    sample="${fullname%_R[0-9+]*}"
+    echo "processing" $sample
+    trimmed_for="$sample""_R1_trim_trim.fastq"
+    trimmed_rev="$sample""_R2_trim_trim.fastq"
+    echo $trimmed_for
+    cutadapt -a GGCTGACTGACT -A CCAATTACCATA --no-indels -o $trimmed_for -p $trimmed_rev ${for[i]} ${rev[i]} -m 1 --cores 5
+    done
+```  
+
+
+The outputs were used for next step.
+
+
+### 1.2. Processing sequencing data using DADA2
+
+DADA2 was performed in the same server from University of Amsterdam using R studio. 
+
+```{r eval=FALSE}
+library("DADA2")
+library("phyloseq")
+```  
+
+
+First of all, I set the path containing trimmed files and inspect sequence quality by plotting them. 
+
+```{r eval=FALSE}
+setwd("~/Ricebiome/rice_sequencing_process/Rice_16S_Bora/16S_primer_trim_3end/16S_adapter_trim_3end/")
+path<-"~/Ricebiome/rice_sequencing_process/Rice_16S_Bora/16S_primer_trim_3end/16S_adapter_trim_3end/"
+list.files(path)
+
+fnFs <- sort(list.files(path, pattern="_R1_trim_trim.fastq", full.names = TRUE)) #sort forward and reverse files
+fnRs <- sort(list.files(path, pattern="_R2_trim_trim.fastq", full.names = TRUE)) #sort forward and reverse files
+
+plotQualityProfile(fnFs[4])
+plotQualityProfile(fnRs[4])
+
+```  
+
+
+In our study, expected amplicon length was 465bp (341-806), therefore merging forward and reverse shoul be more than 470 bp. 
+We decided parameter for filtering (below) considering this fact and sequencing quality.  
+
+```{r eval=FALSE}
+
+fnFs<-fnFs[-1] #remove negative control sample
+fnRs<-fnRs[-1] #remove negative control sample
+
+sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1) # Extract sample names, assuming filenames have format: SAMPLENAME_XXX.fastq
+
+filtFs <- file.path(path, "filtered", paste0(sample.names, "_F_filt.fastq.gz")) # Place filtered files in filtered/ subdirectory
+filtRs <- file.path(path, "filtered", paste0(sample.names, "_R_filt.fastq.gz")) # Place filtered files in filtered/ subdirectory
+
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+
+
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen = c(290,170),
+                     maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
+                     compress=TRUE, multithread=TRUE) # On Windows set multithread=FALSE
+
+```  
+
+
+
+Remove errors that was leaned based on most abundunt sequence error rate as maximum possible error rates(initial rartes for the input of machine-learning)
+
+```{r eval=FALSE}
+
+errF <- learnErrors(filtFs, multithread=TRUE)
+errR <- learnErrors(filtRs, multithread=TRUE)
+
+plotErrors(errF, nominalQ=TRUE)
+plotErrors(errR, nominalQ=TRUE)
+
+dadaFs <- dada(filtFs, err=errF, multithread=TRUE)
+dadaRs <- dada(filtRs, err=errR, multithread=TRUE)
+
+dadaFs[[1]]#inspecting dada-class object
+
+```
+
+
+
+Filtering low quality of sequence is done and now we merge pair-end reads. Chimera can occur duing merging, therefore remove them. 
+
+```{r eval=FALSE}
+
+mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE)
+head(mergers[[1]]) # Inspect the merger data.frame from the first sample
+
+seqtab <- makeSequenceTable(mergers)# Construct sequence table 
+dim(seqtab)
+table(nchar(getSequences(seqtab)))# Inspect distribution of sequence lengths
+
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)# remove chimeras 
+dim(seqtab.nochim)
+sum(seqtab.nochim)/sum(seqtab)
+
+```
+
+
+Track the number of reads reads through the pipeline. By looking at it, you will see if you lost too many reads in which step.
+
+```{r eval=FALSE}
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
+colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track) <- sample.names
+head(track)
+
+```
+
+
+Everything looks okay, then assign sequence to taxonomy. Database for taxonomy annotation, I downloaded database from distributor.
+
+```{r eval=FALSE}
+taxa <- assignTaxonomy(seqtab.nochim, "~/silva_nr_v132_train_set.fa.gz", multithread=TRUE) 
+taxa <- addSpecies(taxa, "~/silva_species_assignment_v132.fa.gz")
+
+```
+
+Afterwards, make small modification on sample names & taxa name, assign unique sequences to amplicon sequence variant (ASV), remove ASVs assigned to unwanted taxa (i.e mitocondria, chloroplast) & signletones.
+
+```{r eval=FALSE}
+
+sampleID<-rownames(seqtab.nochim)
+sampleID <- sampleID %>% str_replace_all("-", "_") #want to change "-" in sample name to "_"
+rownames(seqtab.nochim)<-sampleID
+
+ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE), tax_table(taxa)) #incorporate all datasets into phyloseq object to handle easier
+dna <- Biostrings::DNAStringSet(taxa_names(ps))
+names(dna) <- taxa_names(ps)
+ps <- merge_phyloseq(ps, dna)
+taxa_names(ps) <- paste0("bASV", seq(ntaxa(ps))) # Give name to sequence as ASV__
+
+tax <- data.frame(tax_table(ps))
+for (i in 1:7){ tax[,i] <- as.character(tax[,i])}
+tax[is.na(tax)] <- "Unknown" #fill missing taxa as unknown
+tax_table(ps) <- as.matrix(tax)
+
+ps_rm <- ps %>% #remove ASVs assigned to unwanted taxa
+  subset_taxa(
+    Kingdom == "Bacteria" &
+    Phylum !="Cyanobacteria"&
+    Family  != "Mitochondria"
+  )
+
+ps_rm2 <- prune_taxa(taxa_sums(ps_rm) > 1, ps_rm) #remove singletones
+
+
+```
+
+
+Finally, obtaine data frame from phyloseq object: abaundance table of ASVs, taxa annotation, sequence of ASV
+
+```{r eval=FALSE}
+asv<-as.data.frame(otu_table(ps_rm2))
+tax<-as.data.frame(tax_table(ps_rm2))
+seq<-as.data.frame(refseq(ps_rm2))
+```
+
+For further use, made FASTA file.
+
+```{r eval=FALSE}
+test.seq<-seq
+test.seq$rowname<-rownames(test.seq)
+
+Xfasta <- character(nrow(test.seq) * 2)
+Xfasta[c(TRUE, FALSE)] <- paste0(">", test.seq$rowname)
+Xfasta[c(FALSE, TRUE)] <- test.seq$x # to download the table, writeLines(Xfasta, "Rice_16S_seq.fasta")
+```
+
+
+Build essential datasets to be ready to go next section
+
+```{r eval=FALSE}
+SAM=sample_data(meta, errorIfNULL = T) #add metadata (that is same one used in W1. phenotype data) into phyloseq object
+ps2 = merge_phyloseq(ps_rm2, SAM)
+```
+
+As I mentioned ealier, you can find final outputs in R work image "W2_16S_analaysis_image.Rdata" named as
+ps2: phyloseq object that including all information 
+meta: sample information, phenotype measurement (sample names on row, variables on colunm)
+asv: ASV abundance data frame (sample names on row, ASVs on colunm)
+tax: taxonomy annotation data frame (ASVs on row, taxanomic rank on colunm)
+seq: sequences that was assigned to each ASV (ASVs on row, sequence on colunm)
+EC: abundance table of EC from Picrust2 (please see section 6 below)
+PW: abundance table of pathway from Picrust2 (please see section 6 below)
+ec_des: description of EC 
+path_des: description of PW
+
+
+
+## 2. Getting started
+
+Now the working envrionemnt changed from university sever to local computer. 
+
+Glimpse current datasets. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+load("W2_16S_analysis_image.Rdata") #To load this data image, the package 'phyloseq' is required
+ps2
+meta[1:5,1:5]
+asv[1:5,1:5]
+tax[1:5,1:5]
+```
+
+
+Load required packages 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+library(dplyr) #select, filter , join function
+library(tibble) #select, filter , join function
+library(phyloseq) # rarefying, PCoA plot
+library(ranacapa) # rarecurve
+library(ggplot2) # general plot
+library(vegan) # measure alpha diversity, rarecurve, PERMANOVA, CAP, anova.cca
+library(FSA) 
+library(rcompanion) #duun test
+library(multcompView) #duun test
+library(reshape2) #To melt dataframe
+library(tidyr)
+library(ggrepel)
+library(lmPerm)
+```
+
+Have a look at the data distribution of microbiome data.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+min(colSums(asv)) 
+max(colSums(asv)) 
+nsam<-dim(asv)[1] # number of samples 
+nvar<-dim(asv)[2] # nubmer of variables
+sum(asv==0) #### Number of zeros
+sum(asv==0)/(nvar*nsam)*100 #percentage of zeros
+hist(as.matrix(asv), max(asv), right=FALSE, las=1, 
+     xlab = "Occurrence value", ylab = "Frequency", main = "Occurrence frequency")# Plot zeros
+non_zero<-0*1:nvar
+for (i in 1:nvar){non_zero[i]<-sum(asv[,i] != 0)}
+plot(sample(non_zero), xlab = "ASV", ylab = "Frequency", main="Number of non zero values", las=1)# Plot number of non zeros in each ASV
+min(rowSums(asv)) # minimum sequencing depth in samples
+max(rowSums(asv)) # maximum sequencing depth in samples
+plot(sort(rowSums(asv))) #plot sequencing depth in samples
+```
+
+
+
+## 3. Alpha diversity of bacterial community (Fig 2A, Fig S3)
+
+
+
+### 3.1. Rarefaction curve
+
+Check rarefaction curve to see if each sample reach saturated sequencing depth
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+p<- ggrare(ps2, step = 200, label = NULL, color = "Soil_compartment" ,se = TRUE)
+p+ xlim(0, 10000)+ ylim(0, 500) + labs(y = "Number of ASVs") #adjusting x axis
+```
+
+
+### 3.2. Calculate alpha diversity indices.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+shannon <- diversity(asv, index = "shannon") #shannon index
+chaos <- as.data.frame(t(estimateR(asv)))
+no.species<-chaos$S.obs
+chao1<-chaos$S.chao1
+evenness <- diversity(asv)/log(specnumber(asv))# Evenness index
+bac_alpha<-as.data.frame(cbind(shannon, no.species, chao1, evenness, sample_data(ps2)))
+bac_alpha$Compartment2<-factor(bac_alpha$Compartment,c("Bulksoil","Rhizosphere","Root"))
+
+```
+
+### 3.3. Kruskal-Wallis on alpha diversity indices 
+
+Check the effect of soil type, compartment (rhizosphere/root) on alpha diversity indices
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+indices=4 #number of alpha diversity indices that I am testing
+soil.p<-0*1:indices
+soil.cs<-0*1:indices
+soil.df<-0*1:indices
+soil.com.p<-0*1:indices
+soil.com.cs<-0*1:indices
+soil.com.df<-0*1:indices
+names<-0*1:indices
+
+for(i in 1:indices) {
+  k<-kruskal.test(bac_alpha[,i]~bac_alpha$Soil, data=bac_alpha)
+  soil.cs[i]<-k$statistic[[1]]
+  soil.df[i]<-k$parameter[[1]]
+  soil.p[i]<- k$p.value
+  k<-kruskal.test(bac_alpha[,i]~bac_alpha$Soil_compartment, data=bac_alpha)
+  soil.com.cs[i]<-k$statistic[[1]]
+  soil.com.df[i]<-k$parameter[[1]]
+  soil.com.p[i] <-k$p.value
+  names[i]<-colnames(bac_alpha[i])}
+
+soil.p<-p.adjust(soil.p, method = "BH")
+soil.com.p<-p.adjust(soil.com.p, method = "BH")
+KW.p<-cbind(names,soil.cs, soil.df, soil.p, soil.com.cs, soil.com.df, soil.com.p)
+KW.p 
+```
+
+Make summary table of results
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+data=bac_alpha
+by=data$Soil
+
+st<-as.data.frame(matrix(NA, 2, indices))
+for(i in 1:indices) {
+  ag<-aggregate(data[,i]~ by, data, function(x) c(mean = mean(x), sd = sd(x)))
+  agres<-as.data.frame(ag$`data[, i]`)
+  agres$r.mean<-round(agres$mean,3)
+  agres$r.sd<-round(agres$sd,3)
+  agres$mean_sd<- paste(agres$r.mean, agres$r.sd, sep="±")
+  st[,i]<-agres$mean_sd
+  }
+
+rownames(st)<-ag$by
+colnames(st)<-colnames(data[1:indices])
+
+sample_size<-as.data.frame(with(data, table(Soil)))
+
+st$sample_size<-sample_size$Freq
+st$name_size<-paste(rownames(st),st$sample_size, sep=",n=")
+rownames(st)<-st$name_size
+
+st2<-data.frame(t(st[,-(5:6)]))
+st2$KW_adj.p<-KW.p[,7]
+bac_alpha_summary_soil<-st2
+bac_alpha_summary_soil 
+
+```
+
+
+
+### 3.4. Dunn test on alpha diversity indices among soil_compartment group
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+Z<-as.data.frame(matrix(NA, 15, indices)) #results list =15
+P.unadj<-as.data.frame(matrix(NA, 15, indices)) #results list =15
+P.adj<-as.data.frame(matrix(NA, 15, indices)) #results list =15
+Let<-as.data.frame(matrix(NA, 6, indices)) #results list =6
+
+for(i in 1:indices) {
+  PT<-dunnTest(bac_alpha[,i]~Soil_compartment, data=bac_alpha, method = "bh")
+  Z[,i]<-PT$res$Z
+  P.unadj[,i]<-PT$res$P.unadj
+  P.adj[,i]<-PT$res$P.adj
+  PT2<-PT$res
+  cl<-cldList(comparison = PT2$Comparison,p.value = PT2$P.adj,threshold  = 0.05)
+  Let[,i]<-cl$Letter
+}
+
+rownames(Z) <- PT$res$Comparison
+colnames(Z) <- colnames(bac_alpha[1:indices])
+rownames(P.unadj) <- PT$res$Comparison
+colnames(P.unadj) <- colnames(bac_alpha[1:indices])
+rownames(P.adj) <- PT$res$Comparison
+colnames(P.adj) <- colnames(bac_alpha[1:indices])
+rownames(Let) <- cl$Group
+colnames(Let) <- colnames(bac_alpha[1:indices])
+
+Let
+
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+data=bac_alpha
+by=data$Soil_compartment
+
+
+st<-as.data.frame(matrix(NA, 6, indices))
+
+for(i in 1:indices) {
+  ag<-aggregate(data[,i]~ by, data, function(x) c(mean = mean(x), sd = sd(x)))
+  agres<-as.data.frame(ag$`data[, i]`)
+  agres$r.mean<-round(agres$mean,3)
+  agres$r.sd<-round(agres$sd,3)
+  agres$mean_sd<- paste(agres$r.mean, agres$r.sd, sep="±")
+  st[,i]<-agres$mean_sd
+  }
+
+st2<-as.data.frame(matrix(NA, 6, indices))
+for(i in 1:indices) {
+  st2[,i]<- paste(st[,i], Let[,i], sep=",")
+  }
+
+rownames(st2)<-ag$by
+colnames(st2)<-colnames(data[1:indices])
+sample_size<-as.data.frame(with(data, table(Soil_compartment)))
+st2$sample_size<-sample_size$Freq
+st2$name_size<-paste(rownames(st2),st2$sample_size, sep=",n=")
+rownames(st2)<-st2$name_size
+bac_alpha_summary_soil_com<-as.data.frame(t(st2[,-(5:6)])) 
+
+bac_alpha_summary_soil_com
+```
+
+
+
+
+### 3.5. plot shannon index
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+ggplot(bac_alpha) + 
+  geom_boxplot(aes(x=Compartment2, y=shannon, fill=Soil), outlier.colour = NA)+ 
+  labs(x="", y = "Shannon index") + scale_fill_manual(values=c("#a6611a","#018571"))+
+  geom_point(aes(x=Compartment2, y=shannon, fill=Soil), alpha = 0.4, shape = 21, 
+             position = position_jitterdodge())+
+  scale_x_discrete(labels = c("BK", "RS", "RT"))+
+  theme(axis.text.x = element_text(size = 13, face = "bold",colour = "black"), 
+        axis.text.y = element_text(size = 13),
+        axis.title.y = element_text(face = "bold", size = 13, vjust = 3), 
+        legend.text = element_text(size = 13), legend.title = element_text(size = 13,face = "bold"))
+```
+
+
+## 4. Beta diversity (Fig 2B, Fig 2C)
+
+
+### 4.1. Rarefying abundance table 
+
+Prior to rarefying, we removed the sample "R_J9_e" due to its low sequencing depth. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+rar_ps = subset_samples(ps2, sample_names(ps2) != "R_J9_e") 
+set.seed(1234) # to have reproducible result
+rar_ps =rarefy_even_depth(rar_ps, rngseed=T, replace = F)
+```
+
+
+### 4.2. Create sum of bacterial phylum table 
+
+
+Combine ASV table and taxonomic table
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+t.rar_asv<-as.data.frame(t(otu_table(rar_ps)))
+t.rar_asv_rc<-rownames_to_column(t.rar_asv)
+tax_rc<-rownames_to_column(tax) 
+phyla<-right_join(tax_rc, t.rar_asv_rc, by="rowname") 
+rownames(phyla)<-phyla$rowname
+phyla<-phyla[,c(3:4,9:205)]
+phyla[1:5,1:5]
+```
+
+As Proteobacteria occupy huge porpotion of phylum in bacterial community. 
+Therefore, Proteobacteria was subsitute with class level. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+ptb<-subset(phyla, Phylum == "Proteobacteria")
+ptb$Phylum<-ptb$Class
+non_ptb<-subset(phyla, !Phylum == "Proteobacteria")
+new_phyla<-(rbind(ptb,non_ptb))[,-2]
+new_phyla$Phylum <- droplevels(new_phyla)$Phylum
+new_phyla[1:5,1:5]
+```
+
+Create sum of phylum 
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+np = length(levels(new_phyla$Phylum)) #number of phylum
+ns = 197 #number of sample 
+phyla_sum = data.frame(matrix(ncol=ns,nrow=np))
+
+for(i in 1:ns){
+  ag<-aggregate(new_phyla[,1+i] ~ Phylum, new_phyla, sum)
+  phyla_sum[,i]<-ag[2]
+}
+
+rownames(phyla_sum)<-ag$Phylum
+colnames(phyla_sum)<-colnames(new_phyla[,2:198])
+phyla_sum[1:5,1:5]
+
+```
+
+
+To show major phylum on the plot later, we create 'others' by summing minor phlyum based on their percentage in community
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+phyla_sum$percentage<-rowSums(phyla_sum)/sum(rowSums(phyla_sum))*100
+phyla_major<-subset(phyla_sum, percentage >=1)
+phyla_minor<-subset(phyla_sum, percentage <1)
+Others<-as.data.frame(colSums(phyla_minor))
+colnames(Others)<-"Others"
+phyla_test<-as.data.frame(cbind(t(phyla_major),Others))
+phyla_test = phyla_test[!row.names(phyla_test)%in% "percentage",]# remove percentage row
+phyla_test[1:5,1:10]
+```
+
+### 4.3. Dunn test on phylum composition 
+
+First, transform phyla dataset into percentage unit
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+phyla_test_perc<-as.data.frame(matrix(NA,ns,10)) #sample =197, phyla=10
+
+for (i in 1:ns){ #row
+  for(j in 1:10) #column
+    phyla_test_perc[i,j]<-phyla_test[i,j]/rowSums(phyla_test[i,1:10])*100
+}
+
+rownames(phyla_test_perc)<-rownames(phyla_test)
+colnames(phyla_test_perc)<-colnames(phyla_test)
+phyla_test_perc$Soil_compartment<-(sample_data(rar_ps))$Soil_compartment
+phyla_test_perc[1:5,1:10]
+```
+
+
+Run dunn test to compare composition among soil_compartment groups. In this test, phylum 'others' was not included as its comparison is meaningless.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+indices=9 #number of variable that I am testing
+Z<-as.data.frame(matrix(NA, 15, indices)) #results list =15
+P.unadj<-as.data.frame(matrix(NA, 15, indices)) #results list =15
+P.adj<-as.data.frame(matrix(NA, 15, indices)) #results list =15
+Let<-as.data.frame(matrix(NA, 6, indices)) #results list =6
+
+for(i in 1:indices) {
+  PT<-dunnTest(phyla_test_perc[,i]~Soil_compartment, data=phyla_test_perc, method = "bh")
+  Z[,i]<-PT$res$Z
+  P.unadj[,i]<-PT$res$P.unadj
+  P.adj[,i]<-PT$res$P.adj
+  PT2<-PT$res
+  cl<-cldList(comparison = PT2$Comparison,p.value = PT2$P.adj,threshold  = 0.05)
+  Let[,i]<-cl$Letter
+}
+
+rownames(Z) <- PT$res$Comparison
+colnames(Z) <- colnames(phyla_test_perc[1:indices])
+rownames(P.unadj) <- PT$res$Comparison
+colnames(P.unadj) <- colnames(phyla_test_perc[1:indices])
+rownames(P.adj) <- PT$res$Comparison
+colnames(P.adj) <- colnames(phyla_test_perc[1:indices])
+rownames(Let) <- cl$Group
+colnames(Let) <- colnames(phyla_test_perc[1:indices])
+
+
+Let
+```
+
+
+### 4.4. Phylum stack bar plot
+
+Prepare dataset for stack bar plot
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+np2=10  #number of phylums
+nsoilcom=6 #number of factors in soil_com
+phyla_soilcom<-matrix(NA,nsoilcom,np2) 
+
+for(i in 1:np2){
+  a<-aggregate(phyla_test_perc[,i], by=list(Soil_compartment=phyla_test_perc$Soil_compartment), FUN=sum) #aggregate by soil_com
+  phyla_soilcom[,i]<-a$x
+}
+
+rownames(phyla_soilcom)<-a$Soil_compartment
+colnames(phyla_soilcom)<-colnames(phyla_test_perc[,1:10])
+
+phyla_soilcom_rc<-rownames_to_column(as.data.frame(t(phyla_soilcom)))
+phyla_soilcom_rc_melt<-melt(phyla_soilcom_rc, 
+                            rowname=c("Fi_BS", "Fi_RS","Fi_RT","Fo_BS","Fo_RS", "Fo_RT"))
+
+phyla_soilcom_rc_melt$phylum<-factor(phyla_soilcom_rc_melt$rowname, 
+                                     c("Gammaproteobacteria","Alphaproteobacteria","Deltaproteobacteria","Bacteroidetes",
+                                       "Verrucomicrobia","Acidobacteria","Chloroflexi","Actinobacteria","Patescibacteria","Others"))
+
+phyla_soilcom_rc_melt[1:5,1:4]
+
+```
+
+
+
+creat plot
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+cols<-c("#a6cee3", "#1f78b4", "#b2df8a", "#33a02c","#fb9a99", 
+        "#e31a1c", "#fdbf6f", "#ff7f00","#cab2d6", "#6a3d9a") #assign colors 
+
+p<-ggplot(phyla_soilcom_rc_melt, aes(variable, value, fill=phylum)) + 
+  geom_bar(stat="identity", position="fill") 
+
+p + scale_fill_manual(values=cols) + theme_classic() + 
+  theme(text = element_text(size=18), axis.text.x = element_text(angle=90, hjust=1, colour = "black"))+ labs(x="")
+```
+
+
+### 4.5. Principle coordinate analysis (PCoA)
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+soil_com_colors<-c("#dfc27d","#bf812d","#8c510a","#80cdc1","#35978f","#01665e") 
+ord <- ordinate(rar_ps, "PCoA", "bray")
+plot_ordination(rar_ps, ord, color="Soil_compartment") + 
+  scale_color_manual(values = soil_com_colors) + geom_point(size=1)
+```
+
+
+### 4.6. Permutational analysis of variance (PERMANOVA)
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+### PERMANOVA
+dis<-phyloseq::distance(rar_ps, method = "bray")
+sam<-as(sample_data(rar_ps),"data.frame")
+perm<-adonis(dis ~Soil*Compartment*Genotype, data=sam, permutations = 9999)
+perm.res<-as.data.frame(perm$aov.tab)
+perm.res  
+```
+
+subsetting dataset for further use
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+rar_ps_Fo_RS<-subset_samples(rar_ps, Soil_compartment=="Fo_RS" )
+rar_ps_Fo_RT<-subset_samples(rar_ps, Soil_compartment=="Fo_RT" )
+rar_ps_Fi_RT<-subset_samples(rar_ps, Soil_compartment=="Fi_RT" )
+rar_ps_Fi_RS<-subset_samples(rar_ps, Soil_compartment=="Fi_RS" )
+
+rar_Fo_RT<-cbind(sample_data(rar_ps_Fo_RT), otu_table(rar_ps_Fo_RT))
+rar_Fo_RS<-cbind(sample_data(rar_ps_Fo_RS), otu_table(rar_ps_Fo_RS))
+rar_Fi_RT<-cbind(sample_data(rar_ps_Fi_RT), otu_table(rar_ps_Fi_RT))
+rar_Fi_RS<-cbind(sample_data(rar_ps_Fi_RS), otu_table(rar_ps_Fi_RS))
+```
+
+
+## 5. Correlation between diversity of bacterial community and SLs level (Fig 4)
+
+As SLs were only detected in the plant roots grown on forest soil, all correlation study with SLs performed using forest soil dataset. 
+Although we had five replicates for each experimental condition, root material was sometimes insufficient to analyze both SLs production and microbiome diversity and composition on the same sample. Therefore, three replicates were used for each analysis (total n= 48), and we used only the samples for which we had enough material to assess both SL and microbiome (n=37) for the correlation analyses between SL production and relative abundance of community. 
+
+### 5.1. Correlation between alpha diversity and SLs level
+
+
+Subset forest soil dataset from alpha diversity measurement that I obtained earlier.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+match_alpha<-subset(bac_alpha, Soil=="Forest"&SL_analysis=="yes")
+```
+
+
+The correlation between alpha diversity and SLs were examined using linear model incoperating permutation test. 
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+vars=4
+fourdo <-matrix(NA,vars,2)
+meo5ds  <-matrix(NA,vars,2)
+orb <-matrix(NA,vars,2)
+
+for(i in 1:vars) {
+  l<-lmp(match_alpha[,i]~X4DO_pmol_g, data=match_alpha)
+  fourdo[i,]<-coef(summary(l))[c(2,6)] #estimate & p value
+  l<-lmp(match_alpha[,i]~MeO5DS_pmol_g, data=match_alpha)
+  meo5ds[i,]<-coef(summary(l))[c(2,6)] #estimate & p value
+  l<-lmp(match_alpha[,i]~orobanchol_pmol_g, data=match_alpha)
+  orb[i,]<-coef(summary(l))[c(2,6)] #estimate & p value
+}
+
+lmp_res<-cbind(fourdo, meo5ds, orb)
+rownames(lmp_res)<-colnames(match_alpha[1:vars])
+colnames(lmp_res)<-c("fourdo.est","fourdo.p","meo5ds.est","meo5ds.p","orb.est","orb.p")
+
+lmp_res
+```
+
+### 5.2. Correlation between beta diversity and SLs level (Constrained PCoA)
+
+Subset dataset 
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+match_ps_Fo_RT<-subset_samples(rar_ps_Fo_RT,SL_analysis=="yes")
+match_ps_Fo_RS<-subset_samples(rar_ps_Fo_RS,SL_analysis=="yes")
+
+match_Fo_RT<-cbind(sample_data(match_ps_Fo_RT), otu_table(match_ps_Fo_RT))
+match_Fo_RS<-cbind(sample_data(match_ps_Fo_RS), otu_table(match_ps_Fo_RS))
+
+SLs_Fo_RT<-match_Fo_RT[,c(11:13)]
+SLs_Fo_RS<-match_Fo_RS[,c(11:13)]
+
+```
+
+Run constrained PCoA
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+var=3
+RT.p <- 0*1:var
+RS.p <- 0*1:var
+set.seed(123)
+
+for(i in 1:var) {
+  RT.p[i]<-(anova.cca(capscale(match_Fo_RT[14:2367]~SLs_Fo_RT[,i], match_Fo_RT, dist="bray"), step=1000))$`Pr(>F)`[1]
+  RS.p[i]<-(anova.cca(capscale(match_Fo_RS[14:2367]~SLs_Fo_RS[,i], match_Fo_RS, dist="bray"), step=1000))$`Pr(>F)`[1]
+}
+
+
+res.p<-rbind(RT.p,RS.p)  
+colnames(res.p)<-colnames(SLs_Fo_RT[1:var])
+res.p
+```
+
+Get species score from significant constrained model (in both roots and rhizosphere by orobanchol)
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# in roots
+FoRT_orb_scores<-(scores(capscale(match_Fo_RT[14:2367]~SLs_Fo_RT[,2], dist="bray"))$species)
+FoRT_orb_scores_abs<-abs(FoRT_orb_scores)
+FoRT_orb_scores2<-as.data.frame(cbind(FoRT_orb_scores,FoRT_orb_scores_abs))
+FoRT_orb_scores3<-FoRT_orb_scores2[,c(1,3)]
+colnames(FoRT_orb_scores3)<-c("orb_CAP1","orb_abs_CAP1")
+FoRT_orb_scores3_rc<-rownames_to_column(FoRT_orb_scores3)
+selected_taxa = tax_rc[which(tax_rc$rowname %in% FoRT_orb_scores3_rc$rowname),] # extract taxa
+FoRT_orb_scores_tax<-full_join(FoRT_orb_scores3_rc,selected_taxa, by="rowname")
+FoRT_orb_scores_tax[1:5,1:9]
+
+# in rhizosphere
+FoRS_orb_scores<-(scores(capscale(match_Fo_RS[14:2367]~SLs_Fo_RS[,2], dist="bray"))$species)
+FoRS_orb_scores_abs<-abs(FoRS_orb_scores)
+FoRS_orb_scores2<-as.data.frame(cbind(FoRS_orb_scores,FoRS_orb_scores_abs))
+FoRS_orb_scores3<-FoRS_orb_scores2[,c(1,3)]
+colnames(FoRS_orb_scores3)<-c("orb_CAP1","orb_abs_CAP1")
+FoRS_orb_scores3_rc<-rownames_to_column(FoRS_orb_scores3)
+selected_taxa = tax_rc[which(tax_rc$rowname %in% FoRS_orb_scores3_rc$rowname),] # extract taxa
+FoRS_orb_scores_tax<-full_join(FoRS_orb_scores3_rc,selected_taxa, by="rowname")
+FoRS_orb_scores_tax[1:5,1:9]
+```
+
+
+Now plot CAP results 
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# in roots
+cap<-ordinate(physeq = match_ps_Fo_RT, method = "CAP", distance = "bray", formula = ~ orobanchol_pmol_g) 
+cap.p<-plot_ordination(physeq = match_ps_Fo_RT, ordination = cap, axes = c(1,2), 
+                       color = "orobanchol_pmol_g")+ geom_point(size = 5)+ 
+  scale_color_gradient(high = "#e31a1c", low = "#1f78b4")
+
+cap.sc <- data.frame(vegan::scores(cap, display = "species"))
+cap.sc <- rownames_to_column(cap.sc)
+
+cap.cut <-subset(cap.sc, (abs(CAP1))>=0.1) #cutoff value 
+cap.tax<-left_join(cap.cut, tax_rc, by="rowname")
+cap.tax<-unite(cap.tax, col=newname, c(rowname, Genus), sep=" : ", remove=F)
+
+arrow_map <- aes(xend = CAP1, yend= MDS1,x = 0,y = 0,shape = NULL, color=NULL)
+label_map <- aes(x =  1.1*CAP1, y =  1.1*MDS1, shape = NULL, color=NULL, label = newname)
+arrowhead = arrow(length = unit(0.01, "npc"))
+
+cap.p + geom_segment(mapping = arrow_map, size = .7,data = cap.tax, arrow = arrowhead) + 
+  geom_text_repel(mapping = label_map,data = cap.tax, size=3, show.legend = F) 
+
+# in rhizosphere
+cap<-ordinate(physeq = match_ps_Fo_RS, method = "CAP", distance = "bray", formula = ~ orobanchol_pmol_g) 
+cap.p<-plot_ordination(physeq = match_ps_Fo_RS, ordination = cap, axes = c(1,2), 
+                       color = "orobanchol_pmol_g")+ geom_point(size = 5)+ 
+  scale_color_gradient(high = "#e31a1c", low = "#1f78b4")
+
+cap.sc <- data.frame(vegan::scores(cap, display = "species"))
+cap.sc <- rownames_to_column(cap.sc)
+
+cap.cut <-subset(cap.sc, (abs(CAP1))>=0.08) #cutoff value 
+cap.tax<-left_join(cap.cut, tax_rc, by="rowname")
+cap.tax<-unite(cap.tax, col=newname, c(rowname, Genus), sep=" : ", remove=F)
+
+arrow_map <- aes(xend = CAP1, yend= MDS1,x = 0,y = 0,shape = NULL, color=NULL)
+label_map <- aes(x =  1.1*CAP1, y =  1.1*MDS1, shape = NULL, color=NULL, label = newname)
+arrowhead = arrow(length = unit(0.01, "npc"))
+
+cap.p + geom_segment(mapping = arrow_map, size = .7,data = cap.tax, arrow = arrowhead) + 
+  geom_text_repel(mapping = label_map,data = cap.tax, size=3, show.legend = F) 
+
+```
+
+
+## 6. PiCRUST2
+
+PiCRUST2 was employed to predict functionality of bacterial community. 
+As it required linux envirionment, I made virtual machine ubuntu (version 18.04, 64.bit) in VMware workstaion 15 player. 
+Due to differnt operating environment and language (python),here I only share code without intermediate data or results. However, final output will be shared in work image.
+
+
+```{r eval=FALSE}
+conda activate picurst2
+cd rice_picrust # directory where my files are
+
+#-s: my sequencing file (fasta format), -i:my ASV table, -o:output dir name
+picrust2_pipeline.py -s Rice_16S_seq.fasta -i Rice_16S_asv_picrust2.txt -o picrust2_out_pipeline 
+
+#Add descriptions on output
+
+cd picrust2_out_pipeline
+
+add_descriptions.py -i EC_metagenome_out/pred_metagenome_unstrat.tsv.gz -m EC \
+-o EC_metagenome_out/pred_metagenome_unstrat_EC_descrip.tsv.gz
+
+add_descriptions.py -i KO_metagenome_out/pred_metagenome_unstrat.tsv.gz -m KO \
+-o KO_metagenome_out/pred_metagenome_unstrat_KO_descrip.tsv.gz
+
+add_descriptions.py -i pathways_out/path_abun_unstrat.tsv.gz -m METACYC \
+-o pathways_out/path_abun_unstrat_descrip.tsv.gz
+
+```
+
+
+
+Final outputs from PiCRUST2 were imported to current R studio in local computer and the outputs named EC (abundance table of EC), PW (abundance table of pathway), and their description (ec_des, path_des) can be found in provided work image "W2_16S_analaysis_image". 
+
+
+For further analyses, abundance table of both EC and pathway were rarefied
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+# EC table
+tEC<-as.data.frame(t(EC[,-1]))
+tEC_round <- round(tEC)
+tEC.ps<-phyloseq(otu_table(as.matrix(tEC_round), taxa_are_rows = FALSE),sample_data(ps2))      
+rar_tEC.ps = subset_samples(tEC.ps, sample_names(tEC.ps) != "R_J9_e") #remove low depth sample
+set.seed(1234)
+rar_tEC.ps =rarefy_even_depth(rar_tEC.ps, rngseed=T, replace = F)
+
+# pathway table
+tPW<-as.data.frame(t(PW[,-1]))
+tPW_round <- round(tPW)
+tPW.ps<-phyloseq(otu_table(as.matrix(tPW_round), taxa_are_rows = FALSE),sample_data(ps2))      
+rar_tPW.ps = subset_samples(tPW.ps, sample_names(tPW.ps) != "R_J9_e") #remove low depth sample
+set.seed(1234)
+rar_tPW.ps =rarefy_even_depth(rar_tPW.ps, rngseed=T, replace = F)
+
+```
+
+
+## 7. Prepare dataset for W4 (correlation study between abundance of each genus/ASV/EC/pathway with level of SLs)
+Filter counts not seen more than 2 times in at least 40% of the sample
+
+
+
+### 7.1. Picrust dataset
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+#EC dataset, Root
+match_Fo_RT_rar_tEC.ps<-subset_samples(rar_tEC.ps,Soil_compartment=="Fo_RT"&SL_analysis=="yes")
+match_Fo_RT_rar_tEC.ps_filt=filter_taxa(match_Fo_RT_rar_tEC.ps, function(x) sum(x > 2) > (0.4*length(x)), TRUE) 
+match_Fo_RT_rar_tEC_filt<-otu_table(match_Fo_RT_rar_tEC.ps_filt)
+FoRT_EC <-as.data.frame(match_Fo_RT_rar_tEC_filt[,colSums(match_Fo_RT_rar_tEC_filt[,])>2*(dim(match_Fo_RT_rar_tEC_filt)[1])])
+
+
+#EC dataset, Rhizosphere
+match_Fo_RS_rar_tEC.ps<-subset_samples(rar_tEC.ps,Soil_compartment=="Fo_RS"&SL_analysis=="yes")
+match_Fo_RS_rar_tEC.ps_filt=filter_taxa(match_Fo_RS_rar_tEC.ps, function(x) sum(x > 2) > (0.4*length(x)), TRUE) 
+match_Fo_RS_rar_tEC_filt<-otu_table(match_Fo_RS_rar_tEC.ps_filt)
+FoRS_EC<-as.data.frame(match_Fo_RS_rar_tEC_filt[,colSums(match_Fo_RS_rar_tEC_filt[,])>2*(dim(match_Fo_RS_rar_tEC_filt)[1])])
+
+#Pathway dataset, Root
+match_Fo_RT_rar_tPW.ps<-subset_samples(rar_tPW.ps,Soil_compartment=="Fo_RT"&SL_analysis=="yes")
+match_Fo_RT_rar_tPW.ps_filt=filter_taxa(match_Fo_RT_rar_tPW.ps, function(x) sum(x > 2) > (0.4*length(x)), TRUE) 
+match_Fo_RT_rar_tPW_filt<-otu_table(match_Fo_RT_rar_tPW.ps_filt)
+FoRT_PW<-as.data.frame(match_Fo_RT_rar_tPW_filt[,colSums(match_Fo_RT_rar_tPW_filt[,])>2*(dim(match_Fo_RT_rar_tPW_filt)[1])])
+
+#Pathway dataset, rhizosphere
+match_Fo_RS_rar_tPW.ps<-subset_samples(rar_tPW.ps,Soil_compartment=="Fo_RS"&SL_analysis=="yes")
+match_Fo_RS_rar_tPW.ps_filt=filter_taxa(match_Fo_RS_rar_tPW.ps, function(x) sum(x > 2) > (0.4*length(x)), TRUE) 
+match_Fo_RS_rar_tPW_filt<-otu_table(match_Fo_RS_rar_tPW.ps_filt)
+FoRS_PW<-as.data.frame(match_Fo_RS_rar_tPW_filt[,colSums(match_Fo_RS_rar_tPW_filt[,])>2*(dim(match_Fo_RS_rar_tPW_filt)[1])])
+
+```
+
+
+
+### 7.2. ASVs 
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+#Roots
+match_ps_Fo_RT_filt=filter_taxa(match_ps_Fo_RT, function(x) sum(x > 2) > (0.4*length(x)), TRUE) 
+match_Fo_RT_filt<-otu_table(match_ps_Fo_RT_filt)
+match_Fo_RT_filt<-as.data.frame(match_Fo_RT_filt[,colSums(match_Fo_RT_filt[,])>2*(dim(match_Fo_RT_filt)[1])]) 
+bac.FoRT_ASV<-cbind(sample_data(match_ps_Fo_RT_filt), match_Fo_RT_filt)
+
+#Rhizosphere
+match_ps_Fo_RS_filt=filter_taxa(match_ps_Fo_RS, function(x) sum(x > 2) > (0.4*length(x)), TRUE) 
+match_Fo_RS_filt<-otu_table(match_ps_Fo_RS_filt)
+match_Fo_RS_filt<-as.data.frame(match_Fo_RS_filt[,colSums(match_Fo_RS_filt[,])>2*(dim(match_Fo_RS_filt)[1])])
+bac.FoRS_ASV<-cbind(sample_data(match_ps_Fo_RS_filt), match_Fo_RS_filt)
+```
+
+### 7.3. Genus level
+
+
+First of all, new genus table need to be made and then filtered.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+#in roots
+t.match_RT_rc<-rownames_to_column(as.data.frame(t(otu_table(match_ps_Fo_RT))))
+RT_tax<-right_join(tax_rc, t.match_RT_rc, by="rowname")
+rownames(RT_tax)<-RT_tax$rowname
+RT_genus<-RT_tax[,c(7,9:44)]
+RT_genus$Genus <- droplevels(RT_genus)$Genus
+np = length(levels(RT_genus$Genus)) #number of genus
+ns = 36 #number of sample 
+RT_genus_sum = data.frame(matrix(ncol=ns,nrow=np))
+for(i in 1:ns){
+  ag<-aggregate(RT_genus[,1+i] ~ Genus, RT_genus, sum)
+  RT_genus_sum[,i]<-ag[2]
+}
+rownames(RT_genus_sum)<-ag$Genus
+colnames(RT_genus_sum)<-colnames(RT_genus[,2:37])
+RT_genus_sum$percentage<-rowSums(RT_genus_sum)/sum(rowSums(RT_genus_sum))*100
+RT_major_genus<-as.data.frame(t(subset(RT_genus_sum, percentage >=1))) #select genera which are abundant >1%
+RT_major_genus = RT_major_genus[!row.names(RT_major_genus)%in% "percentage",]#remove percentage row
+bac.FoRT_genus = RT_major_genus[,-10] #remove unknown genus
+bac.FoRT_genus[1:5,1:9]
+
+#in rhizosphere
+t.match_RS_rc<-rownames_to_column(as.data.frame(t(otu_table(match_ps_Fo_RS))))
+RS_tax<-right_join(tax_rc, t.match_RS_rc, by="rowname")
+rownames(RS_tax)<-RS_tax$rowname
+RS_genus<-RS_tax[,c(7,9:45)]
+RS_genus$Genus <- droplevels(RS_genus)$Genus
+np = length(levels(RS_genus$Genus)) #number of genus
+ns = 37 #number of sample 
+RS_genus_sum = data.frame(matrix(ncol=ns,nrow=np))
+for(i in 1:ns){
+  ag<-aggregate(RS_genus[,1+i] ~ Genus, RS_genus, sum)
+  RS_genus_sum[,i]<-ag[2]
+}
+rownames(RS_genus_sum)<-ag$Genus
+colnames(RS_genus_sum)<-colnames(RS_genus[,2:38])
+#Select genera
+RS_genus_sum$percentage<-rowSums(RS_genus_sum)/sum(rowSums(RS_genus_sum))*100
+RS_major_genus<-as.data.frame(t(subset(RS_genus_sum, percentage >=0.5))) #select genera which are abundant >0.5%
+RS_major_genus = RS_major_genus[!row.names(RS_major_genus)%in% "percentage",]#remove percentage row
+bac.FoRS_genus = RS_major_genus[,-18] #remove unknown genus
+bac.FoRS_genus[1:5,1:9]
+```
+
+change object name of tax to bac_tax to use in W4
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+bac_tax<-tax_rc
+```
+
+
+
+
+Final outputs from 7.1 ~ 7.3 can be found in work image "W4_correlation_study_image.Rdata".
+
+## Version
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+sessionInfo()
+```
+
+
+
+
