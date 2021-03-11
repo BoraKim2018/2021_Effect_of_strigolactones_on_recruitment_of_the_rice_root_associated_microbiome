@@ -2,7 +2,7 @@
 title: "W3. ITS analysis"
 author: "Bora Kim"
 date: "March 5, 2021"
-output: html_document
+output: github_document
 ---
 
 This is meant for sharing dataset and script of the publication "Strigolactone_structural specificity in microbiome recruitment in rice, 2021". This markdown contains the process of ITS amplicon sequencing from rhizosphere and roots of 16 rice genotypes grown on two natural soils for 31 days. To begin with, raw ITS amplicon sequence has been reposited in SRA database under accession number:
@@ -26,10 +26,10 @@ Reverse-complement R1 primer TTACTTCCTCTAAATGACCAAG  for R2 read trimming
 
 ### 1.1. Remove primer and adapter sequence in raw sequencing data
 
-I used software called 'Cutadapt' employed in linux environmnet. First I removed reverse-complement primer parts as: 
+I used software called 'Cutadapt' employed in linux environmnet with python. First I removed reverse-complement primer parts as: 
 
 
-```{r eval=FALSE}
+```{R eval=FALSE}
 for=(*R1_001.fastq.gz) #forward files
 rev=(*R2_001.fastq.gz) #reverse files
 for ((i=0; i<${#for[*]}; i++)) # iterates over the forward reads array
@@ -43,9 +43,10 @@ for ((i=0; i<${#for[*]}; i++)) # iterates over the forward reads array
   cutadapt -a GCATCGATGAAGAACGCAGC -A TTACTTCCTCTAAATGACCAAG --no-indels -o $trimmed_for -p $trimmed_rev ${for[i]} ${rev[i]} -m 1 --cores 5   done
 ```
 
+
 The outputs were moved to new directory and there, I trmmed again the adapter sequence as:  
   
-```{r eval=FALSE}
+```{R eval=FALSE}
   for=(*R1_trim.fastq) #forward files
   rev=(*R2_trim.fastq) #reverse files
   for ((i=0; i<${#for[*]}; i++)) # iterates over the forward reads array
