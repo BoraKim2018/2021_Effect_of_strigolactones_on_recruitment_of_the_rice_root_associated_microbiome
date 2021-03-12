@@ -14,4 +14,4 @@ In each folder there are 3 files:
 2) file name finish with script.rmd: It is actual R markdown file that you can download on your local computer and reproduce the results.  
 3) file name finish with image.RData: R image files contains initial dataset for data analysis. It is needed to reproduce the results todgether with script.rmd 
 
-If you have any questions, please contact me (bo_ra_kim@hotmail.com)
+If you have any questions, please contact me (B.Kim@uva.nl or bo_ra_kim@hotmail.com)
