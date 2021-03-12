@@ -1,0 +1,1194 @@
+---
+title: "W4 Correlation study"
+author: "Bora Kim"
+date: "March 5, 2021"
+output: pdf_document
+---
+
+This is meant for sharing dataset and script of the publication "Strigolactone structural specificity in microbiome recruitment in rice, 2021". This markdown contains the process of correlation study between the relative abundance of ASV/genus/EC/pathway (that were obtained from W2 and W3) and level of strigolactones (SLs). All correlation study was performed using negative binomial generalized linear model together with P value validation using permutation. Goodness of model fit was assessed using shaprio test on residual of predicted model and checking outliters by cook's distance. Note that, results of permutation test (Perm.P) could be changed every run because it is based on random sampling. Permutation, especially with EC table, takes long time depnding on your computer system. For this reason, loading image file "W4_correlation_study_image_full.Rdata" is recommended as it contains all intermediate and final results so that no need to ru permutation, although the image file "W4_correlation_study_image.Rdata" is provided too for starting from beginning. 
+
+## 1. Getting strarted
+
+
+Load required dataset: all datasets here were generated from W2 and W3. 
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+load("W4_correlation_study_image_full.Rdata")
+```
+
+Load required packages for analysis.
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+library(ggplot2)
+library(MASS) 
+library(dplyr)
+library(tibble)
+library(tidyr)
+library(stringr)
+```
+
+
+## 2. Prepare some datasets
+
+```{r eval=FALSE}
+tot_tax<-rbind(bac_tax,fun_tax)
+
+#ASVs
+RS_ASV<-cbind(bac.FoRS_ASV, fun.FoRS_ASV[14:143])
+bac.FoRT_ASV_rc<-rownames_to_column(bac.FoRT_ASV)
+fun.FoRT_ASV_rc<-rownames_to_column(fun.FoRT_ASV)
+RT_ASV<-right_join(bac.FoRT_ASV_rc, fun.FoRT_ASV_rc[,c(1,15:98)], by="rowname")
+rownames(RT_ASV)<-RT_ASV$rowname
+RT_ASV<-RT_ASV[,-1]
+
+#Genus
+RS_genus<-cbind(RS_ASV[1:13],bac.FoRS_genus, fun.FoRS_genus2[2:30])
+bac.FoRT_genus2<-cbind(bac.FoRT_ASV_rc[1:14],bac.FoRT_genus)
+RT_genus<-right_join(bac.FoRT_genus2, fun.FoRT_genus2, by="rowname")
+rownames(RT_genus)<-RT_genus$rowname
+RT_genus<-RT_genus[,-1]
+
+#EC
+RSEC_col<-str_replace(colnames(FoRS_EC),":",".")
+colnames(FoRS_EC)<-RSEC_col
+RTEC_col<-str_replace(colnames(FoRT_EC),":",".")
+colnames(FoRT_EC)<-RTEC_col
+
+#path
+path_des_x<-str_replace(path_des$rowname,"X3_HYDROXYPHENYLACETATE_DEGRADATION_PWY","3_HYDROXYPHENYLACETATE_DEGRADATION_PWY")
+path_des$rowname<-path_des_x
+
+```
+
+## 3. Negative binomial generalized linear model
+
+### 3.1. ASVs
+
+#### 3.1.1. Fo_RS
+
+```{r eval=FALSE}
+
+data=RS_ASV
+nasv = dim(data)[2]-13 # number of variables
+fourdo_est <- 0*1:nasv
+meo5ds_est <- 0*1:nasv
+orb_est <- 0*1:nasv
+fourdo_std.error <- 0*1:nasv
+meo5ds_std.error <- 0*1:nasv
+orb_std.error <- 0*1:nasv
+fourdo_Zvalue <- 0*1:nasv
+meo5ds_Zvalue <- 0*1:nasv
+orb_Zvalue <- 0*1:nasv
+fourdo_p <- 0*1:nasv
+meo5ds_p <- 0*1:nasv
+orb_p <- 0*1:nasv
+fourdo_shapiro <- 0*1:nasv
+meo5ds_shapiro <- 0*1:nasv
+orb_shapiro <- 0*1:nasv
+fourdo_cd<- 0*1:nasv
+meo5ds_cd <- 0*1:nasv
+orb_cd <- 0*1:nasv
+
+
+for(i in 1:nasv) {
+  fourdo.g <-glm.nb(data[,13+i]~X4DO_pmol_g, data=data)
+  fourdo_est[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 1]
+  fourdo_std.error[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 2]
+  fourdo_Zvalue[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 3]
+  fourdo_p[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 4]
+  fourdo_shapiro[i]<-shapiro.test(resid(fourdo.g))[2]$p.value
+  fourdo_cd[i]<-sum(cooks.distance(fourdo.g)>0.3)
+  
+  meo5ds.g <-glm.nb(data[,13+i]~MeO5DS_pmol_g, data=data)
+  meo5ds_est[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 1]
+  meo5ds_std.error[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 2]
+  meo5ds_Zvalue[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 3]
+  meo5ds_p[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 4]
+  meo5ds_shapiro[i]<-shapiro.test(resid(meo5ds.g))[2]$p.value
+  meo5ds_cd[i]<-sum(cooks.distance(meo5ds.g)>0.3)
+  
+  orb.g <-glm.nb(data[,13+i]~orobanchol_pmol_g,data=data)
+  orb_est[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 1]
+  orb_std.error[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 2]
+  orb_Zvalue[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 3]
+  orb_p[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 4]
+  orb_shapiro[i]<-shapiro.test(resid(orb.g))[2]$p.value
+  orb_cd[i]<-sum(cooks.distance(orb.g)>0.3)
+}
+
+
+RS_ASV_res<-as.data.frame(cbind(
+  fourdo_est, fourdo_std.error, fourdo_Zvalue,fourdo_p, fourdo_shapiro,fourdo_cd,
+  meo5ds_est, meo5ds_std.error, meo5ds_Zvalue, meo5ds_p, meo5ds_shapiro,meo5ds_cd,
+  orb_est, orb_std.error, orb_Zvalue, orb_p, orb_shapiro,orb_cd))
+
+rownames(RS_ASV_res)<-colnames(data[,14:dim(data)[2]])
+
+```
+
+
+Now, select significant model that has normaly distributed residual & no outliers and validate its p value using permutation.
+
+```{r eval=FALSE}
+
+# 4do
+RS_ASV_4do_res<-(subset(RS_ASV_res, fourdo_p<0.05&fourdo_shapiro>0.05&fourdo_cd<3))[1:6]
+RS_ASV_4do_res_name<-rownames(RS_ASV_4do_res)
+RS_ASV_4do<-RS_ASV[RS_ASV_4do_res_name]
+
+data=RS_ASV_4do
+res=RS_ASV_4do_res
+test=RS_ASV$X4DO_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RS_ASV_4do_res$Perm.p<-Perm.p
+RS_ASV_4do_res_rc<-rownames_to_column(subset(RS_ASV_4do_res, Perm.p<0.05))
+RS_ASV_4do_res_tax<-left_join(RS_ASV_4do_res_rc,tot_tax, by="rowname")
+
+# MeO5DS
+RS_ASV_meo5ds_res<-(subset(RS_ASV_res, meo5ds_p<0.05&meo5ds_shapiro>0.05&meo5ds_cd<3))[7:12]
+RS_ASV_meo5ds_res_name<-rownames(RS_ASV_meo5ds_res)
+RS_ASV_meo5ds<-RS_ASV[RS_ASV_meo5ds_res_name]
+
+data=RS_ASV_meo5ds
+res=RS_ASV_meo5ds_res
+test=RS_ASV$MeO5DS_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RS_ASV_meo5ds_res$Perm.p<-Perm.p
+RS_ASV_meo5ds_res_rc<-rownames_to_column(subset(RS_ASV_meo5ds_res, Perm.p<0.05))
+RS_ASV_meo5ds_res_tax<-left_join(RS_ASV_meo5ds_res_rc,tot_tax, by="rowname")
+
+# orobanchol
+RS_ASV_orb_res<-(subset(RS_ASV_res, orb_p<0.05&orb_shapiro>0.05&orb_cd<3))[13:18]
+RS_ASV_orb_res_name<-rownames(RS_ASV_orb_res)
+RS_ASV_orb<-RS_ASV[RS_ASV_orb_res_name]
+
+data=RS_ASV_orb
+res=RS_ASV_orb_res
+test=RS_ASV$orobanchol_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RS_ASV_orb_res$Perm.p<-Perm.p
+RS_ASV_orb_res_rc<-rownames_to_column(subset(RS_ASV_orb_res, Perm.p<0.05))
+RS_ASV_orb_res_tax<-left_join(RS_ASV_orb_res_rc,tot_tax, by="rowname")
+
+```
+
+
+Combining final results in one table
+
+```{r eval=FALSE}
+RS_ASV_4do_res_tax<-RS_ASV_4do_res_tax%>%mutate(tested_SL="4DO")
+RS_ASV_meo5ds_res_tax<-RS_ASV_meo5ds_res_tax%>%mutate(tested_SL="MeO5DS")
+RS_ASV_orb_res_tax<-RS_ASV_orb_res_tax%>%mutate(tested_SL="Orobanchol")
+
+force_bind = function(df1, df2, df3) {
+    colnames(df2) = colnames(df1) = colnames(df3)
+    bind_rows(df1, df2, df3)
+}
+
+RS_ASV_res_final<-force_bind(RS_ASV_4do_res_tax, RS_ASV_meo5ds_res_tax,RS_ASV_orb_res_tax)
+
+new_col<-c("tested_ASV","est","std.error","Zvalue","glm.P","shapiro.p","no.outliers","Perm.P",
+           "Kingdom","Phylum","Class","Order","Family","Genus","Species","tested_SL")
+
+colnames(RS_ASV_res_final)<-new_col
+RS_ASV_res_final<-RS_ASV_res_final[,c(16,1:15)]
+
+```
+
+
+
+#### 3.1.2. Fo_RT
+
+```{r eval=FALSE}
+
+data=RT_ASV
+nasv = dim(data)[2]-13 # number of variables
+fourdo_est <- 0*1:nasv
+meo5ds_est <- 0*1:nasv
+orb_est <- 0*1:nasv
+fourdo_std.error <- 0*1:nasv
+meo5ds_std.error <- 0*1:nasv
+orb_std.error <- 0*1:nasv
+fourdo_Zvalue <- 0*1:nasv
+meo5ds_Zvalue <- 0*1:nasv
+orb_Zvalue <- 0*1:nasv
+fourdo_p <- 0*1:nasv
+meo5ds_p <- 0*1:nasv
+orb_p <- 0*1:nasv
+fourdo_shapiro <- 0*1:nasv
+meo5ds_shapiro <- 0*1:nasv
+orb_shapiro <- 0*1:nasv
+fourdo_cd<- 0*1:nasv
+meo5ds_cd <- 0*1:nasv
+orb_cd <- 0*1:nasv
+
+for(i in 1:nasv) {
+  fourdo.g <-glm.nb(data[,13+i]~X4DO_pmol_g, data=data)
+  fourdo_est[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 1]
+  fourdo_std.error[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 2]
+  fourdo_Zvalue[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 3]
+  fourdo_p[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 4]
+  fourdo_shapiro[i]<-shapiro.test(resid(fourdo.g))[2]$p.value
+  fourdo_cd[i]<-sum(cooks.distance(fourdo.g)>0.3)
+  
+  meo5ds.g <-glm.nb(data[,13+i]~MeO5DS_pmol_g, data=data)
+  meo5ds_est[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 1]
+  meo5ds_std.error[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 2]
+  meo5ds_Zvalue[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 3]
+  meo5ds_p[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 4]
+  meo5ds_shapiro[i]<-shapiro.test(resid(meo5ds.g))[2]$p.value
+  meo5ds_cd[i]<-sum(cooks.distance(meo5ds.g)>0.3)
+  
+  orb.g <-glm.nb(data[,13+i]~orobanchol_pmol_g,data=data)
+  orb_est[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 1]
+  orb_std.error[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 2]
+  orb_Zvalue[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 3]
+  orb_p[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 4]
+  orb_shapiro[i]<-shapiro.test(resid(orb.g))[2]$p.value
+  orb_cd[i]<-sum(cooks.distance(orb.g)>0.3)
+}
+
+
+RT_ASV_res<-as.data.frame(cbind(
+  fourdo_est, fourdo_std.error, fourdo_Zvalue,fourdo_p, fourdo_shapiro,fourdo_cd,
+  meo5ds_est, meo5ds_std.error, meo5ds_Zvalue, meo5ds_p, meo5ds_shapiro,meo5ds_cd,
+  orb_est, orb_std.error, orb_Zvalue, orb_p, orb_shapiro,orb_cd))
+
+rownames(RT_ASV_res)<-colnames(data[,14:dim(data)[2]])
+
+```
+
+
+Now, select significant model that has normaly distributed residual & no outliers and validate its p value using permutation.
+
+```{r eval=FALSE}
+
+# 4do
+RT_ASV_4do_res<-(subset(RT_ASV_res, fourdo_p<0.05&fourdo_shapiro>0.05&fourdo_cd<3))[1:6]
+RT_ASV_4do_res_name<-rownames(RT_ASV_4do_res)
+RT_ASV_4do<-RT_ASV[RT_ASV_4do_res_name]
+
+data=RT_ASV_4do
+res=RT_ASV_4do_res
+test=RT_ASV$X4DO_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RT_ASV_4do_res$Perm.p<-Perm.p
+RT_ASV_4do_res_rc<-rownames_to_column(subset(RT_ASV_4do_res, Perm.p<0.05))
+RT_ASV_4do_res_tax<-left_join(RT_ASV_4do_res_rc,tot_tax, by="rowname")
+
+
+# MeO5DS
+RT_ASV_meo5ds_res<-(subset(RT_ASV_res, meo5ds_p<0.05&meo5ds_shapiro>0.05&meo5ds_cd<3))[7:12]
+RT_ASV_meo5ds_res_name<-rownames(RT_ASV_meo5ds_res)
+RT_ASV_meo5ds<-RT_ASV[RT_ASV_meo5ds_res_name]
+
+data=RT_ASV_meo5ds
+res=RT_ASV_meo5ds_res
+test=RT_ASV$MeO5DS_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RT_ASV_meo5ds_res$Perm.p<-Perm.p
+RT_ASV_meo5ds_res_rc<-rownames_to_column(subset(RT_ASV_meo5ds_res, Perm.p<0.05))
+RT_ASV_meo5ds_res_tax<-left_join(RT_ASV_meo5ds_res_rc,tot_tax, by="rowname")
+
+# orobanchol
+RT_ASV_orb_res<-(subset(RT_ASV_res, orb_p<0.05&orb_shapiro>0.05&orb_cd<3))[13:18]
+RT_ASV_orb_res_name<-rownames(RT_ASV_orb_res)
+RT_ASV_orb<-RT_ASV[RT_ASV_orb_res_name]
+
+data=RT_ASV_orb
+res=RT_ASV_orb_res
+test=RT_ASV$orobanchol_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RT_ASV_orb_res$Perm.p<-Perm.p
+RT_ASV_orb_res_rc<-rownames_to_column(subset(RT_ASV_orb_res, Perm.p<0.05))
+RT_ASV_orb_res_tax<-left_join(RT_ASV_orb_res_rc,tot_tax, by="rowname")
+```
+
+Combining final results in one table
+
+```{r eval=FALSE}
+RT_ASV_4do_res_tax<-RT_ASV_4do_res_tax%>%mutate(tested_SL="4DO")
+RT_ASV_meo5ds_res_tax<-RT_ASV_meo5ds_res_tax%>%mutate(tested_SL="MeO5DS")
+RT_ASV_orb_res_tax<-RT_ASV_orb_res_tax%>%mutate(tested_SL="Orobanchol")
+
+RT_ASV_res_final<-force_bind(RT_ASV_4do_res_tax, RT_ASV_meo5ds_res_tax,RT_ASV_orb_res_tax)
+
+colnames(RT_ASV_res_final)<-new_col
+RT_ASV_res_final<-RT_ASV_res_final[,c(16,1:15)]
+```
+
+
+#### 3.1.3. Final results table
+
+```{r eval=FALSE}
+RS_ASV_res_final<-RS_ASV_res_final%>%mutate(dataset="Rhizosphere")
+RT_ASV_res_final<-RT_ASV_res_final%>%mutate(dataset="Roots")
+
+ASV_res_final<-rbind(RS_ASV_res_final,RT_ASV_res_final)
+ASV_res_final<-ASV_res_final[,c(17,1:16)]
+ASV_res_final$Perm.P[ASV_res_final$Perm.P<0.001] <- "p<0.001"
+ASV_res_final[1:5,1:10]
+
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+ASV_res_final[1:5,1:10]
+
+```
+
+
+
+### 3.2. Genus
+
+#### 3.2.1. Fo_RS
+
+```{r eval=FALSE}
+
+data=RS_genus
+nasv = dim(data)[2]-13 # number of variables
+fourdo_est <- 0*1:nasv
+meo5ds_est <- 0*1:nasv
+orb_est <- 0*1:nasv
+fourdo_std.error <- 0*1:nasv
+meo5ds_std.error <- 0*1:nasv
+orb_std.error <- 0*1:nasv
+fourdo_Zvalue <- 0*1:nasv
+meo5ds_Zvalue <- 0*1:nasv
+orb_Zvalue <- 0*1:nasv
+fourdo_p <- 0*1:nasv
+meo5ds_p <- 0*1:nasv
+orb_p <- 0*1:nasv
+fourdo_shapiro <- 0*1:nasv
+meo5ds_shapiro <- 0*1:nasv
+orb_shapiro <- 0*1:nasv
+fourdo_cd<- 0*1:nasv
+meo5ds_cd <- 0*1:nasv
+orb_cd <- 0*1:nasv
+
+
+for(i in 1:nasv) {
+  fourdo.g <-glm.nb(data[,13+i]~X4DO_pmol_g, data=data)
+  fourdo_est[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 1]
+  fourdo_std.error[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 2]
+  fourdo_Zvalue[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 3]
+  fourdo_p[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 4]
+  fourdo_shapiro[i]<-shapiro.test(resid(fourdo.g))[2]$p.value
+  fourdo_cd[i]<-sum(cooks.distance(fourdo.g)>0.3)
+  
+  meo5ds.g <-glm.nb(data[,13+i]~MeO5DS_pmol_g, data=data)
+  meo5ds_est[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 1]
+  meo5ds_std.error[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 2]
+  meo5ds_Zvalue[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 3]
+  meo5ds_p[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 4]
+  meo5ds_shapiro[i]<-shapiro.test(resid(meo5ds.g))[2]$p.value
+  meo5ds_cd[i]<-sum(cooks.distance(meo5ds.g)>0.3)
+  
+  orb.g <-glm.nb(data[,13+i]~orobanchol_pmol_g,data=data)
+  orb_est[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 1]
+  orb_std.error[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 2]
+  orb_Zvalue[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 3]
+  orb_p[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 4]
+  orb_shapiro[i]<-shapiro.test(resid(orb.g))[2]$p.value
+  orb_cd[i]<-sum(cooks.distance(orb.g)>0.3)
+}
+
+
+RS_genus_res<-as.data.frame(cbind(
+  fourdo_est, fourdo_std.error, fourdo_Zvalue,fourdo_p, fourdo_shapiro,fourdo_cd,
+  meo5ds_est, meo5ds_std.error, meo5ds_Zvalue, meo5ds_p, meo5ds_shapiro,meo5ds_cd,
+  orb_est, orb_std.error, orb_Zvalue, orb_p, orb_shapiro,orb_cd))
+
+rownames(RS_genus_res)<-colnames(data[,14:dim(data)[2]])
+
+```
+
+
+Now, select significant model that has normaly distributed residual & no outliers and validate its p value using permutation.
+
+```{r eval=FALSE}
+
+# 4do
+RS_genus_4do_res<-(subset(RS_genus_res, fourdo_p<0.05&fourdo_shapiro>0.05&fourdo_cd<3))[1:6]
+RS_genus_4do_res_name<-rownames(RS_genus_4do_res)
+RS_genus_4do<-RS_genus[RS_genus_4do_res_name]
+
+data=RS_genus_4do
+res=RS_genus_4do_res
+test=RS_genus$X4DO_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+RS_genus_4do_res$Perm.p<-Perm.p
+RS_genus_4do_res_final<-subset(RS_genus_4do_res, Perm.p<0.05)
+
+
+# MeO5DS
+RS_genus_meo5ds_res<-(subset(RS_genus_res, meo5ds_p<0.05&meo5ds_shapiro>0.05&meo5ds_cd<3))[7:12]
+RS_genus_meo5ds_res_name<-rownames(RS_genus_meo5ds_res)
+RS_genus_meo5ds<-RS_genus[RS_genus_meo5ds_res_name]
+
+data=RS_genus_meo5ds
+res=RS_genus_meo5ds_res
+test=RS_genus$MeO5DS_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RS_genus_meo5ds_res$Perm.p<-Perm.p
+RS_genus_meo5ds_res_final<-subset(RS_genus_meo5ds_res, Perm.p<0.05)
+
+
+# orobanchol
+RS_genus_orb_res<-(subset(RS_genus_res, orb_p<0.05&orb_shapiro>0.05&orb_cd<3))[13:18]
+RS_genus_orb_res_name<-rownames(RS_genus_orb_res)
+RS_genus_orb<-RS_genus[RS_genus_orb_res_name]
+
+data=RS_genus_orb
+res=RS_genus_orb_res
+test=RS_genus$orobanchol_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RS_genus_orb_res$Perm.p<-Perm.p
+RS_genus_orb_res_final<-subset(RS_genus_orb_res, Perm.p<0.05)
+
+```
+
+
+Combining final results in one table
+
+```{r eval=FALSE}
+
+RS_genus_4do_res_final$tested_genus<-rownames(RS_genus_4do_res_final)
+RS_genus_meo5ds_res_final$tested_genus<-rownames(RS_genus_meo5ds_res_final)
+RS_genus_orb_res_final$tested_genus<-rownames(RS_genus_orb_res_final)
+RS_genus_4do_res_final<-RS_genus_4do_res_final%>%mutate(tested_SL="4DO")
+RS_genus_meo5ds_res_final<-RS_genus_meo5ds_res_final%>%mutate(tested_SL="MeO5DS")
+RS_genus_orb_res_final<-RS_genus_orb_res_final%>%mutate(tested_SL="Orobanchol")
+
+RS_genus_res_final<-force_bind(RS_genus_4do_res_final, RS_genus_meo5ds_res_final, RS_genus_orb_res_final)
+new_col2<-c("est","std.error","Zvalue","glm.P","shapiro.p","no.outliers","Perm.P","tested_genus","tested_SL")
+colnames(RS_genus_res_final)<-new_col2
+
+RS_genus_res_final<-RS_genus_res_final[,c(9,8,1:7)]
+
+```
+
+
+#### 3.2.2. Fo_RT
+
+```{r eval=FALSE}
+
+data=RT_genus
+nasv = dim(data)[2]-13 # number of variables
+fourdo_est <- 0*1:nasv
+meo5ds_est <- 0*1:nasv
+orb_est <- 0*1:nasv
+fourdo_std.error <- 0*1:nasv
+meo5ds_std.error <- 0*1:nasv
+orb_std.error <- 0*1:nasv
+fourdo_Zvalue <- 0*1:nasv
+meo5ds_Zvalue <- 0*1:nasv
+orb_Zvalue <- 0*1:nasv
+fourdo_p <- 0*1:nasv
+meo5ds_p <- 0*1:nasv
+orb_p <- 0*1:nasv
+fourdo_shapiro <- 0*1:nasv
+meo5ds_shapiro <- 0*1:nasv
+orb_shapiro <- 0*1:nasv
+fourdo_cd<- 0*1:nasv
+meo5ds_cd <- 0*1:nasv
+orb_cd <- 0*1:nasv
+
+
+for(i in 1:nasv) {
+  fourdo.g <-glm.nb(data[,13+i]~X4DO_pmol_g, data=data)
+  fourdo_est[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 1]
+  fourdo_std.error[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 2]
+  fourdo_Zvalue[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 3]
+  fourdo_p[i]<-coef(summary(fourdo.g))[grepl("X4DO_pmol_g$",row.names(coef(summary(fourdo.g)))), 4]
+  fourdo_shapiro[i]<-shapiro.test(resid(fourdo.g))[2]$p.value
+  fourdo_cd[i]<-sum(cooks.distance(fourdo.g)>0.3)
+  
+  meo5ds.g <-glm.nb(data[,13+i]~MeO5DS_pmol_g, data=data)
+  meo5ds_est[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 1]
+  meo5ds_std.error[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 2]
+  meo5ds_Zvalue[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 3]
+  meo5ds_p[i]<-coef(summary(meo5ds.g))[grepl("MeO5DS_pmol_g$",row.names(coef(summary(meo5ds.g)))), 4]
+  meo5ds_shapiro[i]<-shapiro.test(resid(meo5ds.g))[2]$p.value
+  meo5ds_cd[i]<-sum(cooks.distance(meo5ds.g)>0.3)
+  
+  orb.g <-glm.nb(data[,13+i]~orobanchol_pmol_g,data=data)
+  orb_est[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 1]
+  orb_std.error[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 2]
+  orb_Zvalue[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 3]
+  orb_p[i]<-coef(summary(orb.g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(orb.g)))), 4]
+  orb_shapiro[i]<-shapiro.test(resid(orb.g))[2]$p.value
+  orb_cd[i]<-sum(cooks.distance(orb.g)>0.3)
+}
+
+
+RT_genus_res<-as.data.frame(cbind(
+  fourdo_est, fourdo_std.error, fourdo_Zvalue,fourdo_p,fourdo_shapiro,fourdo_cd,
+  meo5ds_est, meo5ds_std.error, meo5ds_Zvalue, meo5ds_p, meo5ds_shapiro,meo5ds_cd,
+  orb_est, orb_std.error, orb_Zvalue, orb_p, orb_shapiro,orb_cd))
+
+rownames(RT_genus_res)<-colnames(data[,14:dim(data)[2]])
+
+```
+
+
+Now, select significant model that has normaly distributed residual & no outliers and validate its p value using permutation.
+
+```{r eval=FALSE}
+
+# 4do
+RT_genus_4do_res<-(subset(RT_genus_res, fourdo_p<0.05&fourdo_shapiro>0.05&fourdo_cd<3))[1:6]
+RT_genus_4do_res_name<-rownames(RT_genus_4do_res)
+RT_genus_4do<-RT_genus[RT_genus_4do_res_name]
+
+data=RT_genus_4do
+res=RT_genus_4do_res
+test=RT_genus$X4DO_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+RT_genus_4do_res$Perm.p<-Perm.p
+RT_genus_4do_res_final<-subset(RT_genus_4do_res, Perm.p<0.05)
+
+
+# MeO5DS
+RT_genus_meo5ds_res<-(subset(RT_genus_res, meo5ds_p<0.05&meo5ds_shapiro>0.05&meo5ds_cd<3))[7:12]
+RT_genus_meo5ds_res_name<-rownames(RT_genus_meo5ds_res)
+RT_genus_meo5ds<-RT_genus[RT_genus_meo5ds_res_name]
+
+data=RT_genus_meo5ds
+res=RT_genus_meo5ds_res
+test=RT_genus$MeO5DS_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RT_genus_meo5ds_res$Perm.p<-Perm.p
+RT_genus_meo5ds_res_final<-subset(RT_genus_meo5ds_res, Perm.p<0.05)
+
+
+# orobanchol
+RT_genus_orb_res<-(subset(RT_genus_res, orb_p<0.05&orb_shapiro>0.05&orb_cd<3))[13:18]
+RT_genus_orb_res_name<-rownames(RT_genus_orb_res)
+RT_genus_orb<-RT_genus[RT_genus_orb_res_name]
+
+data=RT_genus_orb
+res=RT_genus_orb_res
+test=RT_genus$orobanchol_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RT_genus_orb_res$Perm.p<-Perm.p
+RT_genus_orb_res_final<-subset(RT_genus_orb_res, Perm.p<0.05)
+
+```
+
+
+Combining final results in one table
+
+```{r eval=FALSE}
+
+RT_genus_4do_res_final$tested_genus<-rownames(RT_genus_4do_res_final)
+RT_genus_meo5ds_res_final$tested_genus<-rownames(RT_genus_meo5ds_res_final)
+RT_genus_orb_res_final$tested_genus<-rownames(RT_genus_orb_res_final)
+RT_genus_4do_res_final<-RT_genus_4do_res_final%>%mutate(tested_SL="4DO")
+RT_genus_meo5ds_res_final<-RT_genus_meo5ds_res_final%>%mutate(tested_SL="MeO5DS")
+RT_genus_orb_res_final<-RT_genus_orb_res_final%>%mutate(tested_SL="Orobanchol")
+
+RT_genus_res_final<-force_bind(RT_genus_4do_res_final, RT_genus_meo5ds_res_final, RT_genus_orb_res_final)
+colnames(RT_genus_res_final)<-new_col2
+
+RT_genus_res_final<-RT_genus_res_final[,c(9,8,1:7)]
+
+```
+
+#### 3.2.3. Final results table
+
+```{r eval=FALSE}
+RS_genus_res_final<-RS_genus_res_final%>%mutate(dataset="Rhizosphere")
+RT_genus_res_final<-RT_genus_res_final%>%mutate(dataset="Roots")
+
+genus_res_final<-rbind(RS_genus_res_final,RT_genus_res_final)
+genus_res_final<-genus_res_final[,c(10,1:9)]
+genus_res_final$Perm.P[genus_res_final$Perm.P<0.001] <- "p<0.001"
+genus_res_final
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+genus_res_final
+
+```
+
+
+
+### 3.3. EC with only orobanchol
+
+#### 3.3.1. Fo_RS
+
+```{r eval=FALSE}
+
+data=FoRS_EC
+nasv = dim(data)[2]-13 # number of variables
+
+est <- 0*1:nasv
+std.error <- 0*1:nasv
+Zvalue <- 0*1:nasv
+glm.p <- 0*1:nasv
+shapiro.p <- 0*1:nasv
+no.outliers <- 0*1:nasv
+
+
+for(i in 1:nasv) {
+  g <-glm.nb(data[,13+i]~orobanchol_pmol_g,data=data)
+  est[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 1]
+  std.error[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 2]
+  Zvalue[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 3]
+  glm.p[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 4]
+  shapiro.p[i]<-shapiro.test(resid(g))[2]$p.value
+  no.outliers[i]<-sum(cooks.distance(g)>0.3)
+}
+
+
+RS_ec_res<-as.data.frame(cbind(est, std.error, Zvalue, glm.p, shapiro.p, no.outliers))
+
+rownames(RS_ec_res)<-colnames(data[,14:dim(data)[2]])
+
+```
+
+
+Now, select significant model that has normaly distributed residual & no outliers and validate its p value using permutation.
+
+```{r eval=FALSE}
+RS_ec_res_sig<-subset(RS_ec_res, glm.p<0.01&shapiro.p>0.05&no.outliers<3)
+RS_ec_res_sig_name<-rownames(RS_ec_res_sig)
+RS_ec_res_sig_ec<-FoRS_EC[RS_ec_res_sig_name]
+
+data=RS_ec_res_sig_ec
+res=RS_ec_res_sig
+test=FoRS_EC$orobanchol_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RS_ec_res_sig$Perm.p<-Perm.p
+RS_ec_res_sig_rc<-rownames_to_column(subset(RS_ec_res_sig, Perm.p<0.05))
+RS_ec_res_des<-left_join(RS_ec_res_sig_rc,ec_des, by="rowname")
+RS_ec_res_des<-RS_ec_res_des%>%mutate(dataset="Rhizosphere")
+
+```
+
+
+#### 3.3.2. Fo_RT
+
+```{r eval=FALSE}
+
+data=FoRT_EC
+nasv = dim(data)[2]-13 # number of variables
+est <- 0*1:nasv
+std.error <- 0*1:nasv
+Zvalue <- 0*1:nasv
+glm.p <- 0*1:nasv
+shapiro.p <- 0*1:nasv
+no.outliers <- 0*1:nasv
+
+
+for(i in 1:nasv) {
+  g <-glm.nb(data[,13+i]~orobanchol_pmol_g,data=data)
+  est[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 1]
+  std.error[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 2]
+  Zvalue[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 3]
+  glm.p[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 4]
+  shapiro.p[i]<-shapiro.test(resid(g))[2]$p.value
+  no.outliers[i]<-sum(cooks.distance(g)>0.3)
+}
+
+
+RT_ec_res<-as.data.frame(cbind(est, std.error, Zvalue, glm.p, shapiro.p, no.outliers))
+rownames(RT_ec_res)<-colnames(data[,14:dim(data)[2]])
+
+```
+
+
+Now, select significant model that has normaly distributed residual & no outliers and validate its p value using permutation.
+
+```{r eval=FALSE}
+
+RT_ec_res_sig<-subset(RT_ec_res, glm.p<0.01&shapiro.p>0.05&no.outliers<3)
+RT_ec_res_sig_name<-rownames(RT_ec_res_sig)
+RT_ec_res_sig_ec<-FoRT_EC[RT_ec_res_sig_name]
+
+data=RT_ec_res_sig_ec
+res=RT_ec_res_sig
+test=FoRT_EC$orobanchol_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RT_ec_res_sig$Perm.p<-Perm.p
+RT_ec_res_sig_rc<-rownames_to_column(subset(RT_ec_res_sig, Perm.p<0.05))
+RT_ec_res_des<-left_join(RT_ec_res_sig_rc,ec_des, by="rowname")
+RT_ec_res_des<-RT_ec_res_des%>%mutate(dataset="roots")
+```
+
+
+#### 3.3.3. Final results in one table
+
+```{r eval=FALSE}
+
+ec_res_final<-rbind(RS_ec_res_des, RT_ec_res_des)
+ec_res_final<-ec_res_final[,c(10,1,9,2:8)]
+ec_res_final<-ec_res_final %>% rename( tested_EC = rowname)
+ec_res_final$Perm.p[ec_res_final$Perm.p<0.001] <- "p<0.001"
+ec_res_final[1:5,1:10]
+
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+ec_res_final[1:5,1:10]
+
+```
+
+
+### 3.4. pathway with only orobanchol
+
+#### 3.4.1. Fo_RS
+
+```{r eval=FALSE}
+
+data=FoRS_PW
+nasv = dim(data)[2]-13 # number of variables
+
+est <- 0*1:nasv
+std.error <- 0*1:nasv
+Zvalue <- 0*1:nasv
+glm.p <- 0*1:nasv
+shapiro.p <- 0*1:nasv
+no.outliers <- 0*1:nasv
+
+
+for(i in 1:nasv) {
+  g <-glm.nb(data[,13+i]~orobanchol_pmol_g,data=data)
+  est[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 1]
+  std.error[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 2]
+  Zvalue[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 3]
+  glm.p[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 4]
+  shapiro.p[i]<-shapiro.test(resid(g))[2]$p.value
+  no.outliers[i]<-sum(cooks.distance(g)>0.3)
+}
+
+
+RS_pw_res<-as.data.frame(cbind(est, std.error, Zvalue, glm.p, shapiro.p, no.outliers))
+
+rownames(RS_pw_res)<-colnames(data[,14:dim(data)[2]])
+
+```
+
+
+Now, select significant model that has normaly distributed residual & no outliers and validate its p value using permutation.
+
+```{r eval=FALSE}
+RS_pw_res_sig<-subset(RS_pw_res, glm.p<0.01&shapiro.p>0.05&no.outliers<3)
+RS_pw_res_sig_name<-rownames(RS_pw_res_sig)
+RS_pw_res_sig_path<-FoRS_PW[RS_pw_res_sig_name]
+
+data=RS_pw_res_sig_path
+res=RS_pw_res_sig
+test=FoRS_PW$orobanchol_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RS_pw_res_sig$Perm.p<-Perm.p
+RS_pw_res_sig_rc<-rownames_to_column(subset(RS_pw_res_sig, Perm.p<0.05))
+RS_pw_res_des<-left_join(RS_pw_res_sig_rc,path_des, by="rowname")
+RS_pw_res_des<-RS_pw_res_des%>%mutate(dataset="Rhizosphere")
+
+```
+
+
+#### 3.3.2. Fo_RT
+
+```{r eval=FALSE}
+
+data=FoRT_PW
+nasv = dim(data)[2]-13 # number of variables
+est <- 0*1:nasv
+std.error <- 0*1:nasv
+Zvalue <- 0*1:nasv
+glm.p <- 0*1:nasv
+shapiro.p <- 0*1:nasv
+no.outliers <- 0*1:nasv
+
+
+for(i in 1:nasv) {
+  g <-glm.nb(data[,13+i]~orobanchol_pmol_g,data=data)
+  est[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 1]
+  std.error[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 2]
+  Zvalue[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 3]
+  glm.p[i]<-coef(summary(g))[grepl("orobanchol_pmol_g$",row.names(coef(summary(g)))), 4]
+  shapiro.p[i]<-shapiro.test(resid(g))[2]$p.value
+  no.outliers[i]<-sum(cooks.distance(g)>0.3)
+}
+
+
+RT_pw_res<-as.data.frame(cbind(est, std.error, Zvalue, glm.p, shapiro.p, no.outliers))
+rownames(RT_pw_res)<-colnames(data[,14:dim(data)[2]])
+
+```
+
+
+Now, select significant model that has normaly distributed residual & no outliers and validate its p value using permutation.
+
+```{r eval=FALSE}
+
+RT_pw_res_sig<-subset(RT_pw_res, glm.p<0.01&shapiro.p>0.05&no.outliers<3)
+RT_pw_res_sig_name<-rownames(RT_pw_res_sig)
+RT_pw_res_sig_path<-FoRT_PW[RT_pw_res_sig_name]
+
+data=RT_pw_res_sig_path
+res=RT_pw_res_sig
+test=FoRT_PW$orobanchol_pmol_g
+
+nasv = dim(data)[2] # number of variables
+p <- 0*1:nasv
+nPerm<-1000
+Perm.table<-data.frame(matrix(NA,nasv,nPerm))
+
+for(i in 1:nPerm){
+  sp<-sample(test)
+  for(j in 1:nasv){
+    g <-glm.nb(data[,j]~sp)
+    p[j]<-coef(summary(g))[grepl("sp$",row.names(coef(summary(g)))), 4]
+  }
+  Perm.table[,i]<-p
+} 
+rownames(Perm.table)<-colnames(data)
+Perm.p<-0*1:nasv
+for(j in 1:nasv){
+  Perm.p[j]<-sum(Perm.table[j,]<res[j,4])/nPerm
+}
+
+
+RT_pw_res_sig$Perm.p<-Perm.p
+RT_pw_res_sig_rc<-rownames_to_column(subset(RT_pw_res_sig, Perm.p<0.05))
+RT_pw_res_des<-left_join(RT_pw_res_sig_rc,path_des, by="rowname")
+RT_pw_res_des<-RT_pw_res_des%>%mutate(dataset="roots")
+```
+
+
+#### 3.4.3. Final results in one table
+
+```{r eval=FALSE}
+
+pw_res_final<-rbind(RS_pw_res_des, RT_pw_res_des)
+pw_res_final<-pw_res_final[,c(10,1,9,2:8)]
+pw_res_final<-pw_res_final %>% rename( tested_EC = rowname)
+pw_res_final$Perm.p[pw_res_final$Perm.p<0.001] <- "p<0.001"
+pw_res_final[1:5,1:10]
+```
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+pw_res_final[1:5,1:10]
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+
+
+
