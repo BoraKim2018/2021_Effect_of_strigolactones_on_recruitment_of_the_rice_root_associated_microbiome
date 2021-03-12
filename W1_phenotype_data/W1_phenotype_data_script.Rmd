@@ -2,7 +2,7 @@
 title: "W1. Phenotype data"
 author: "Bora Kim"
 date: "March 4, 2021"
-output: html_document
+output: pdf_document
 ---
 
 This is meant for sharing dataset and script of the publication "Strigolactone_structural specificity in microbiome recruitment in rice, 2021". This markdown contains the process of phenotypic data: Biomass and levels of strigolactones (SLs) from 16 genotypes of rice grown two natural soils for 31 days. 
