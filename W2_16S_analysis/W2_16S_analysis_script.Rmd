@@ -2,9 +2,7 @@
 title: "W2. 16S analysis"
 author: "Bora Kim"
 date: "March 4, 2021"
-output:
-  html_document: default
-  pdf_document: default
+output: pdf_document
 ---
 
 This is meant for sharing dataset and script of the publication "Strigolactone_structural specificity in microbiome recruitment in rice, 2021". This markdown contains the process of 16S amplicon sequencing from rhizosphere and roots of 16 rice genotypes grown on two natural soils for 31 days.To begin with, raw 16S amplicon sequence has been reposited in SRA database under accession number:

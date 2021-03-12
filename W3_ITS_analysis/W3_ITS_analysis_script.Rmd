@@ -2,7 +2,7 @@
 title: "W3. ITS analysis"
 author: "Bora Kim"
 date: "March 5, 2021"
-output: github_document
+output: pdf_document
 ---
 
 This is meant for sharing dataset and script of the publication "Strigolactone_structural specificity in microbiome recruitment in rice, 2021". This markdown contains the process of ITS amplicon sequencing from rhizosphere and roots of 16 rice genotypes grown on two natural soils for 31 days. To begin with, raw ITS amplicon sequence has been reposited in SRA database under accession number:
