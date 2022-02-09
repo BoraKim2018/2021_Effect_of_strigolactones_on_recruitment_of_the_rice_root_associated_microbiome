@@ -1,7 +1,7 @@
 # Effect_of_strigolactones_on_recruitment_of_the_rice_root_microbiome, 2021
 
 
-This is a repository meant for sharing scripts and data set used for the pulication "Strigolactone structural specificity in microbiome recruitment in rice, 2021"
+This is a repository meant for sharing scripts and data set used for the pulication "Effect of strigolactones on recruitment of the rice root-associated microbiome, 2022"
 
 There are 4 folders (workflows) here: 
 1) W1_phenotypic_data: Strigolactones (SLs), biomass (Fig 1, Fig S2)
