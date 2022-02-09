@@ -1,4 +1,4 @@
-# Strigolactone structural specificity in microbiome recruitment in rice, 2021
+# Effect_of_strigolactones_on_recruitment_of_the_rice_root_microbiome, 2021
 
 
 This is a repository meant for sharing scripts and data set used for the pulication "Strigolactone structural specificity in microbiome recruitment in rice, 2021"
