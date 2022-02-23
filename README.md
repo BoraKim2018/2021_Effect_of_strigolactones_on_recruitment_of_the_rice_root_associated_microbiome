@@ -1,4 +1,4 @@
-# Effect_of_strigolactones_on_recruitment_of_the_rice_root_microbiome, 2021
+# Effect of strigolactones on recruitment of the rice root-associated microbiome, 2021
 
 
 This is a repository meant for sharing scripts and data set used for the pulication "Effect of strigolactones on recruitment of the rice root-associated microbiome, 2022"
