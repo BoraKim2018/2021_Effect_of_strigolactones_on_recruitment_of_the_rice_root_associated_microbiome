@@ -5,8 +5,9 @@ date: "March 5, 2021"
 output: pdf_document
 ---
 
-This is meant for sharing dataset and script of the publication "Strigolactone_structural specificity in microbiome recruitment in rice, 2021". This markdown contains the process of ITS amplicon sequencing from rhizosphere and roots of 16 rice genotypes grown on two natural soils for 31 days. To begin with, raw ITS amplicon sequence has been reposited in SRA database under accession number:
-In W3 workflow, there are 6 big main steps as: Processing sequencing data -> alpha diversity -> beta diversity -> exploring Glomeromycota -> effect of SLs on alpha diversity and beta diversity -> prepare datasets for correlation study with SLs (W4). Unfortunately, this markdown was written after processing raw sequencing data in the former expired sever from University of Amsterdam. Therefore, in this markdown, the code (this markdown), final outputs of DADA2 (R image "W3_ITS_analaysis_image.Rdata") are shared for sequencing processing step, but intermediate results won't be shown. Rest of data analysis parts with all intermediate objects and results after DADA2 step will be full shared. 
+This is meant for sharing dataset and script of the publication "Effect of strigolactones on microbiome recruitment in rice, 2021". This markdown contains the process of ITS amplicon sequencing from rhizosphere and roots of 16 rice genotypes grown on two natural soils for 32 days. To begin with, raw ITS amplicon sequence has been reposited in public data repository Zenodo (DOI: 10.5281/zenodo.4604914).
+
+In workflow 3 (W3), there are 6 big main steps as: Processing sequencing data -> alpha diversity -> beta diversity -> exploring Glomeromycota -> effect of SLs on alpha diversity and beta diversity -> prepare datasets for correlation study with SLs (W4). Unfortunately, this markdown was written after processing raw sequencing data in the former expired sever from University of Amsterdam. Therefore, in this markdown, the code (this markdown), final outputs of DADA2 (R image "W3_ITS_analaysis_image.Rdata") are shared for sequencing processing step, but intermediate results won't be shown. Rest of data analysis parts with all intermediate objects and results after DADA2 step will be full shared. 
 
 ## 1. Processing ITS amplicon sequencing (Illumina Miseq)
 The primers used in this study amplified ITS region as below:
@@ -26,7 +27,7 @@ Reverse-complement R1 primer TTACTTCCTCTAAATGACCAAG  for R2 read trimming
 
 ### 1.1. Remove primer and adapter sequence in raw sequencing data
 
-I used software called 'Cutadapt' employed in linux environmnet with python. First I removed reverse-complement primer parts as: 
+'Cutadapt' employed in linux environmnet with python. First removed reverse-complement primer parts as: 
 
 
 ```{R eval=FALSE}
@@ -40,7 +41,9 @@ for ((i=0; i<${#for[*]}; i++)) # iterates over the forward reads array
   trimmed_for="$sample""_R1_trim.fastq"
   trimmed_rev="$sample""_R2_trim.fastq"
   echo $trimmed_for
-  cutadapt -a GCATCGATGAAGAACGCAGC -A TTACTTCCTCTAAATGACCAAG --no-indels -o $trimmed_for -p $trimmed_rev ${for[i]} ${rev[i]} -m 1 --cores 5   done
+  cutadapt -a GCATCGATGAAGAACGCAGC -A TTACTTCCTCTAAATGACCAAG 
+  --no-indels -o $trimmed_for -p $trimmed_rev ${for[i]} ${rev[i]} -m 1 --cores 5   
+  done
 ```
 
 
@@ -57,7 +60,8 @@ The outputs were moved to new directory and there, I trmmed again the adapter se
     trimmed_for="$sample""_R1_trim_trim.fastq"
     trimmed_rev="$sample""_R2_trim_trim.fastq"
     echo $trimmed_for
-    cutadapt -a TACTGACTGACT -A GCCTGCTCGACG --no-indels -o $trimmed_for -p $trimmed_rev ${for[i]} ${rev[i]} -m 1 --cores 5 
+    cutadapt -a TACTGACTGACT -A GCCTGCTCGACG 
+    --no-indels -o $trimmed_for -p $trimmed_rev ${for[i]} ${rev[i]} -m 1 --cores 5 
     done
 ```  
 
@@ -76,15 +80,15 @@ library("phyloseq")
 ```  
 
 
-First of all, I set the path containing trimmed files and inspect sequence quality by plotting them. 
+Set the path containing trimmed files and inspect sequence quality by plotting them. 
 
 ```{r eval=FALSE}
 setwd("~/Ricebiome/rice_sequencing_process/Rice_ITS_Bora")
 path<-"~/Ricebiome/rice_sequencing_process/Rice_ITS_Bora"
 list.files(path)
 
-fnFs <- sort(list.files(path, pattern="_R1_trim_trim.fastq", full.names = TRUE)) #sort forward and reverse files
-fnRs <- sort(list.files(path, pattern="_R2_trim_trim.fastq", full.names = TRUE)) #sort forward and reverse files
+fnFs <- sort(list.files(path, pattern="_R1_trim_trim.fastq", full.names = TRUE)) 
+fnRs <- sort(list.files(path, pattern="_R2_trim_trim.fastq", full.names = TRUE)) 
 
 plotQualityProfile(fnFs[4])
 plotQualityProfile(fnRs[4])
@@ -100,10 +104,13 @@ We decided parameter for filtering (below) considering this fact and sequencing 
 fnFs<-fnFs[-1] #remove negative control sample
 fnRs<-fnRs[-1] #remove negative control sample
 
-sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1) # Extract sample names, assuming filenames have format: SAMPLENAME_XXX.fastq
+# Extract sample names, assuming filenames have format: SAMPLENAME_XXX.fastq
+sample.names <- sapply(strsplit(basename(fnFs), "_"), `[`, 1) 
 
-filtFs <- file.path(path, "filtered", paste0(sample.names, "_F_filt.fastq.gz")) # Place filtered files in filtered/ subdirectory
-filtRs <- file.path(path, "filtered", paste0(sample.names, "_R_filt.fastq.gz")) # Place filtered files in filtered/ subdirectory
+filtFs <- file.path(path, "filtered", paste0(sample.names, "_F_filt.fastq.gz")
+                     # Place filtered files in filtered/ subdirectory
+                    )
+filtRs <- file.path(path, "filtered", paste0(sample.names, "_R_filt.fastq.gz")) 
 
 names(filtFs) <- sample.names
 names(filtRs) <- sample.names
@@ -137,7 +144,8 @@ dadaFs[[1]]#inspecting dada-class object
 
 
 
-Filtering low quality of sequence is done and now we merge pair-end reads. Chimera can occur duing merging, therefore remove them. 
+Filtering low quality of sequence is done and now we merge pair-end reads. 
+Chimera can occur duing merging, therefore remove them. 
 
 ```{r eval=FALSE}
 
@@ -148,18 +156,20 @@ seqtab <- makeSequenceTable(mergers)# Construct sequence table
 dim(seqtab)
 table(nchar(getSequences(seqtab)))# Inspect distribution of sequence lengths
 
-seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)# remove chimeras 
+seqtab.nochim <- removeBimeraDenovo(
+  seqtab, method="consensus", multithread=TRUE, verbose=TRUE)# remove chimeras 
 dim(seqtab.nochim)
 sum(seqtab.nochim)/sum(seqtab)
 
 ```
 
 
-Track the number of reads reads through the pipeline. By looking at it, you will see if you lost too many reads in which step.
+Track the number of reads reads through the pipeline.
 
 ```{r eval=FALSE}
 getN <- function(x) sum(getUniques(x))
-track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
+track <- cbind(out, sapply(dadaFs, getN), 
+               sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
 colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
 rownames(track) <- sample.names
 head(track)
@@ -167,10 +177,10 @@ head(track)
 ```
 
 
-Everything looks okay, then assign sequence to taxonomy. Database for taxonomy annotation, I downloaded database from distributor.
+Sssign sequence to taxonomy. Database for taxonomy annotation (downloaded database from distributor).
 
 ```{r eval=FALSE}
-taxa <- assignTaxonomy(seqtab.nochim,"~/Ricebiome/rice_sequencing_process/Rice_ITS_Bora/ITS_trim_primer_3end/ITS_trim_adapter_3end/tax/sh_general_release_dynamic_04.02.2020.fasta", multithread=TRUE)
+taxa <- assignTaxonomy(seqtab.nochim,"~/sh_general_release_dynamic_04.02.2020.fasta", multithread=TRUE)
 ```
 
 Afterwards, make small modification on sample names & taxa name, assign unique sequences to amplicon sequence variant (ASV), remove signletones.
@@ -181,7 +191,9 @@ sampleID<-rownames(seqtab.nochim)
 sampleID <- sampleID %>% str_replace_all("-", "_") #want to change "-" in sample name to "_"
 rownames(seqtab.nochim)<-sampleID
 
-ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE), tax_table(taxa)) #incorporate all datasets into phyloseq object to handle easier
+ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE), tax_table(taxa)
+               #incorporate all datasets into phyloseq object to handle easier
+               ) 
 dna <- Biostrings::DNAStringSet(taxa_names(ps))
 names(dna) <- taxa_names(ps)
 ps <- merge_phyloseq(ps, dna)
@@ -221,7 +233,7 @@ seq<-as.data.frame(refseq(ps))
 Build essential datasets to be ready to go next section
 
 ```{r eval=FALSE}
-SAM=sample_data(meta, errorIfNULL = T) #add metadata (that is same one used in W1. phenotype data) into phyloseq object
+SAM=sample_data(meta, errorIfNULL = T) 
 ps2 = merge_phyloseq(ps, SAM)
 ```
 
@@ -238,6 +250,25 @@ seq: sequences that was assigned to each ASV (ASVs on row, sequence on colunm)
 
 Now the working envrionemnt changed from university sever to local computer. 
 
+Load required packages 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+library(dplyr) 
+library(tibble) 
+library(phyloseq) 
+library(ranacapa) 
+library(ggplot2) 
+library(vegan) 
+library(FSA) 
+library(rcompanion) 
+library(multcompView) 
+library(reshape2) 
+library(tidyr)
+library(ggrepel)
+library(lmPerm)
+library(MASS)
+```
+
 Glimpse current datasets. 
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
@@ -249,24 +280,6 @@ tax[1:5,1:5]
 ```
 
 
-Load required packages 
-
-```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
-library(dplyr) #select, filter , join function
-library(tibble) #select, filter , join function
-library(phyloseq) # rarefying, PCoA plot
-library(ranacapa) # rarecurve
-library(ggplot2) # general plot
-library(vegan) # measure alpha diversity, rarecurve, PERMANOVA, CAP, anova.cca
-library(FSA) 
-library(rcompanion) #duun test
-library(multcompView) #duun test
-library(reshape2) #To melt dataframe
-library(tidyr)
-library(ggrepel)
-library(lmPerm)
-library(MASS)
-```
 
 Have a look at the data distribution of microbiome data.
 
@@ -282,7 +295,8 @@ hist(as.matrix(asv), max(asv), right=FALSE, las=1,
      xlab = "Occurrence value", ylab = "Frequency", main = "Occurrence frequency")# Plot zeros
 non_zero<-0*1:nvar
 for (i in 1:nvar){non_zero[i]<-sum(asv[,i] != 0)}
-plot(sample(non_zero), xlab = "ASV", ylab = "Frequency", main="Number of non zero values", las=1)# Plot number of non zeros in each ASV
+plot(sample(non_zero), xlab = "ASV", ylab = "Frequency", 
+     main="Number of non zero values", las=1)# Plot number of non zeros in each ASV
 min(rowSums(asv)) # minimum sequencing depth in samples
 max(rowSums(asv)) # maximum sequencing depth in samples
 plot(sort(rowSums(asv))) #plot sequencing depth in samples
@@ -308,10 +322,10 @@ p+ xlim(0, 10000)+ ylim(0, 500) + labs(y = "Number of ASVs") #adjusting x axis
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
 shannon <- diversity(asv, index = "shannon") #shannon index
 chaos <- as.data.frame(t(estimateR(asv)))
-no.species<-chaos$S.obs
 chao1<-chaos$S.chao1
+s.obs<-chaos$S.obs
 evenness <- diversity(asv)/log(specnumber(asv))# Evenness index
-fun_alpha<-as.data.frame(cbind(shannon, no.species, chao1, evenness, sample_data(ps2)))
+fun_alpha<-as.data.frame(cbind(s.obs, shannon, no.species, chao1, evenness, sample_data(ps2)))
 fun_alpha$Compartment2<-factor(fun_alpha$Compartment,c("Bulksoil","Rhizosphere","Root"))
 ```
 
@@ -360,7 +374,7 @@ for(i in 1:indices) {
   agres<-as.data.frame(ag$`data[, i]`)
   agres$r.mean<-round(agres$mean,3)
   agres$r.sd<-round(agres$sd,3)
-  agres$mean_sd<- paste(agres$r.mean, agres$r.sd, sep="Â±")
+  agres$mean_sd<- paste(agres$r.mean, agres$r.sd, sep="±")
   st[,i]<-agres$mean_sd
   }
 
@@ -373,7 +387,7 @@ st$sample_size<-sample_size$Freq
 st$name_size<-paste(rownames(st),st$sample_size, sep=",n=")
 rownames(st)<-st$name_size
 
-st2<-data.frame(t(st[,-(5:6)]))
+st2<-data.frame(t(st[,-(4:5)]))
 st2$KW_adj.p<-KW.p[,7]
 fun_alpha_summary_soil<-st2
 fun_alpha_summary_soil 
@@ -424,7 +438,7 @@ for(i in 1:indices) {
   agres<-as.data.frame(ag$`data[, i]`)
   agres$r.mean<-round(agres$mean,3)
   agres$r.sd<-round(agres$sd,3)
-  agres$mean_sd<- paste(agres$r.mean, agres$r.sd, sep="Â±")
+  agres$mean_sd<- paste(agres$r.mean, agres$r.sd, sep="±")
   st[,i]<-agres$mean_sd
   }
 
@@ -439,7 +453,7 @@ sample_size<-as.data.frame(with(data, table(Soil_compartment)))
 st2$sample_size<-sample_size$Freq
 st2$name_size<-paste(rownames(st2),st2$sample_size, sep=",n=")
 rownames(st2)<-st2$name_size
-fun_alpha_summary_soil_com<-as.data.frame(t(st2[,-(5:6)])) 
+fun_alpha_summary_soil_com<-as.data.frame(t(st2[,-(4:5)])) 
 
 fun_alpha_summary_soil_com
 
@@ -459,7 +473,8 @@ ggplot(fun_alpha) +
   theme(axis.text.x = element_text(size = 13, face = "bold",colour = "black"), 
         axis.text.y = element_text(size = 13),
         axis.title.y = element_text(face = "bold", size = 13, vjust = 3), 
-        legend.text = element_text(size = 13), legend.title = element_text(size = 13,face = "bold"))
+        legend.text = element_text(size = 13), 
+        legend.title = element_text(size = 13,face = "bold"))
 ```
 
 
@@ -485,7 +500,6 @@ tax_rc<-rownames_to_column(tax)
 phyla<-right_join(tax_rc, t.rar_asv_rc, by="rowname") 
 rownames(phyla)<-phyla$rowname
 phyla<-phyla[,c(3,9:206)]
-phyla[1:5,1:5]
 ```
 
 
@@ -503,7 +517,6 @@ for(i in 1:ns){
 
 rownames(phyla_sum)<-ag$Phylum
 colnames(phyla_sum)<-colnames(phyla[,2:199])
-phyla_sum[1:5,1:5]
 ```
 
 
@@ -518,7 +531,6 @@ Others<-as.data.frame(colSums(phyla_minor))
 colnames(Others)<-"Others"
 phyla_test<-as.data.frame(cbind(t(phyla_major),Others))
 phyla_test = phyla_test[!row.names(phyla_test)%in% "percentage",]# remove percentage row
-phyla_test[1:5,1:10]
 ```
 
 
@@ -584,7 +596,8 @@ nsoilcom=6 #number of factors in soil_com
 phyla_soilcom<-matrix(NA,nsoilcom,np2) 
 
 for(i in 1:np2){
-  a<-aggregate(phyla_test_perc[,i], by=list(Soil_compartment=phyla_test_perc$Soil_compartment), FUN=sum) #aggregate by soil_com
+  a<-aggregate(phyla_test_perc[,i], 
+               by=list(Soil_compartment=phyla_test_perc$Soil_compartment), FUN=sum) #aggregate by soil_com
   phyla_soilcom[,i]<-a$x
 }
 
@@ -596,10 +609,11 @@ phyla_soilcom_rc_melt<-melt(phyla_soilcom_rc,
                             rowname=c("Fi_BK", "Fi_RS","Fi_RT","Fo_BK","Fo_RS", "Fo_RT"))
 
 phyla_soilcom_rc_melt$phylum<-factor(phyla_soilcom_rc_melt$rowname, 
-                                     c("Ascomycota","Basidiomycota","Mortierellomycota","Chytridiomycota",
-                                       "Olpidiomycota","Mucoromycota","Glomeromycota","Rozellomycota","Others","Unknown"))
+                                     c("Ascomycota","Basidiomycota","Mortierellomycota",
+                                       "Chytridiomycota", "Olpidiomycota",
+                                       "Mucoromycota","Glomeromycota",
+                                       "Rozellomycota","Others","Unknown"))
 
-phyla_soilcom_rc_melt[1:5,1:4]
 
 ```
 
@@ -615,7 +629,9 @@ p<-ggplot(phyla_soilcom_rc_melt, aes(variable, value, fill=phylum)) +
   geom_bar(stat="identity", position="fill") 
 
 p + scale_fill_manual(values=cols) + theme_classic() + 
-  theme(text = element_text(size=18), axis.text.x = element_text(angle=90, hjust=1, colour = "black"))+ labs(x="")
+  theme(text = element_text(size=18), 
+        axis.text.x = element_text(angle=90, hjust=1, colour = "black"))+ 
+  labs(x="")
 ```
 
 
@@ -656,6 +672,49 @@ rar_Fi_RS<-cbind(sample_data(rar_ps_Fi_RS), otu_table(rar_ps_Fi_RS))
 ```
 
 
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+### PERMANOVA
+dis<-phyloseq::distance(rar_ps_Fi_RS, method = "bray")
+sam<-as(sample_data(rar_ps_Fi_RS),"data.frame")
+perm<-adonis(dis ~Genotype, data=sam, permutations = 9999)
+perm.res<-as.data.frame(perm$aov.tab) 
+perm.res  
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+### PERMANOVA
+dis<-phyloseq::distance(rar_ps_Fi_RT, method = "bray")
+sam<-as(sample_data(rar_ps_Fi_RT),"data.frame")
+perm<-adonis(dis ~Genotype, data=sam, permutations = 9999)
+perm.res<-as.data.frame(perm$aov.tab)
+perm.res  
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+### PERMANOVA
+dis<-phyloseq::distance(rar_ps_Fo_RS, method = "bray")
+sam<-as(sample_data(rar_ps_Fo_RS),"data.frame")
+perm<-adonis(dis ~Genotype, data=sam, permutations = 9999)
+perm.res<-as.data.frame(perm$aov.tab)
+perm.res  
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+### PERMANOVA
+dis<-phyloseq::distance(rar_ps_Fo_RT, method = "bray")
+sam<-as(sample_data(rar_ps_Fo_RT),"data.frame")
+perm<-adonis(dis ~Genotype, data=sam, permutations = 9999)
+perm.res<-as.data.frame(perm$aov.tab)
+perm.res  
+```
+
+
+
 ## 5. Exploring AMF distribution (correlation with biomass; Fig 3)
 
 ### 5.1. The relative abundance of Glomeromycota in each condition
@@ -674,7 +733,18 @@ ggplot(Glomeromycota) + #400x300
   theme(axis.text.x = element_text(size = 13, colour = "black",hjust=1), 
         axis.text.y = element_text(size = 13),
         axis.title.y = element_text(face = "bold", size = 13, vjust = 3), 
-        legend.text = element_text(size = 13), legend.title = element_text(size = 13,face = "bold"))
+        legend.text = element_text(size = 13), 
+        legend.title = element_text(size = 13,face = "bold"))
+```
+
+Dunn test
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+PT<-dunnTest(Glomeromycota$Glomeromycota~Glomeromycota$Soil_compartment, method = "bh")
+PT2<-PT$res
+cl<-cldList(comparison = PT2$Comparison,p.value = PT2$P.adj,threshold  = 0.05)
+cl
+
 ```
 
 
@@ -710,7 +780,8 @@ add soil_compartment group information
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
 t_glome_order_sum<-as.data.frame(t(glome_order_sum))
 t_glome_order_sum<-cbind(t_glome_order_sum, (sample_data(rar_ps))[,1:4])
-t_glome_order_sum$Compartment2<-factor(t_glome_order_sum$Compartment,c("Bulksoil","Rhizosphere","Root"))
+t_glome_order_sum$Compartment2<-factor(t_glome_order_sum$Compartment,
+                                       c("Bulksoil","Rhizosphere","Root"))
 
 #aggregate by soil_com
 p<-6 # order
@@ -718,7 +789,8 @@ nsoilcom=6 #number of factors in soil_com
 glome_order_soilcom<-matrix(NA,nsoilcom,p) 
 
 for(i in 1:p){
-  a<-aggregate(t_glome_order_sum[,i], by=list(Soil_compartment=t_glome_order_sum$Soil_compartment), FUN=sum)
+  a<-aggregate(t_glome_order_sum[,i], 
+               by=list(Soil_compartment=t_glome_order_sum$Soil_compartment), FUN=sum)
   glome_order_soilcom[,i]<-a$x
 }
 
@@ -738,18 +810,23 @@ glome_order_soilcom_rc_melt<-melt(glome_order_soilcom_rc,
                             rowname=c("Fi_BS", "Fi_RS","Fi_RT","Fo_BS","Fo_RS", "Fo_RT"))
 
 glome_order_soilcom_rc_melt$Order<-factor(glome_order_soilcom_rc_melt$rowname, 
-                                     c("Archaeosporales","Diversisporales","Glomerales","Paraglomerales",
-                                       "Gigasporales","Unknown"))
+                                     c("Archaeosporales","Diversisporales","Glomerales",
+                                       "Paraglomerales","Gigasporales","Unknown"))
 
 cols<-c("#a6cee3", "#1f78b4", "#b2df8a", "#33a02c","#808000", "#D3D3D3") #assign colors
-p<-ggplot(glome_order_soilcom_rc_melt, aes(variable, value, fill=Order)) + geom_bar(stat="identity", position="fill") 
+p<-ggplot(glome_order_soilcom_rc_melt, aes(variable, value, fill=Order)) + 
+  geom_bar(stat="identity", position="fill") 
 p + scale_fill_manual(values=cols) + theme_classic() + 
-  theme(text = element_text(size=18), axis.text.x = element_text(angle=90, hjust=1, colour = "black"))+ labs(x="")
+  theme(text = element_text(size=18), 
+        axis.text.x = element_text(angle=90, hjust=1, colour = "black"))+ 
+  labs(x="")
 
 ```
 
 
 ### 5.3. Correlation between the abundance of Glomeromycota orders and plant biomass
+
+
 
 Subset dataset of each treatment
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
@@ -765,6 +842,7 @@ FiRT_glome_order<-subset(t_glome_order_sum2_rc, Soil_compartment=="Fi_RT")
 
 ```
 
+#### 5.3.1 glm negative binomial
 
 Find correlation using negative bionomial generalized linear model
 
@@ -802,10 +880,14 @@ FiRT_glome_order_res
 Test normality of residuals from significant model
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
-shapiro.test(resid(glm.nb(Archaeosporales ~ total_fresh_biomass_g_per_plant, FoRT_glome_order)))[2]$p.value 
-shapiro.test(resid(glm.nb(Diversisporales ~ total_fresh_biomass_g_per_plant, FoRT_glome_order)))[2]$p.value 
-shapiro.test(resid(glm.nb(Archaeosporales ~ total_fresh_biomass_g_per_plant, FoRS_glome_order)))[2]$p.value 
-shapiro.test(resid(glm.nb(Glomerales ~ total_fresh_biomass_g_per_plant, FiRS_glome_order)))[2]$p.value
+shapiro.test(resid(glm.nb(Archaeosporales ~ total_fresh_biomass_g_per_plant, 
+                          FoRT_glome_order)))[2]$p.value 
+shapiro.test(resid(glm.nb(Diversisporales ~ total_fresh_biomass_g_per_plant, 
+                          FoRT_glome_order)))[2]$p.value 
+shapiro.test(resid(glm.nb(Archaeosporales ~ total_fresh_biomass_g_per_plant, 
+                          FoRS_glome_order)))[2]$p.value 
+shapiro.test(resid(glm.nb(Glomerales ~ total_fresh_biomass_g_per_plant, 
+                          FiRS_glome_order)))[2]$p.value
 
 
 ```
@@ -848,7 +930,6 @@ Glome_order_glm_res
 
 
 
-
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
 
 ggplot(FoRT_glome_order,aes(total_fresh_biomass_g_per_plant,Archaeosporales)) + 
@@ -865,10 +946,105 @@ ggplot(FoRS_glome_order,aes(total_fresh_biomass_g_per_plant,Archaeosporales)) +
 ```
 
 
+#### 5.3.2 linear model 
+
+Find correlation using linear model with permutations
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+
+summary(lmp(total_fresh_biomass_g_per_plant~Glomerales, data=FiRS_glome_order))
+summary(lmp(total_fresh_biomass_g_per_plant~Glomerales, data=FiRT_glome_order))
+summary(lmp(total_fresh_biomass_g_per_plant~Archaeosporales, data=FoRS_glome_order))
+summary(lmp(total_fresh_biomass_g_per_plant~Archaeosporales, data=FoRT_glome_order))
+summary(lmp(total_fresh_biomass_g_per_plant~Diversisporales, data=FoRT_glome_order))
+
+
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+fontsize=14
+
+ggplot(FiRS_glome_order,aes(Glomerales,total_fresh_biomass_g_per_plant)) + 
+  labs(x="Glomerales", y="total_fresh_biomass_g_per_plant")+
+  geom_point() +
+  geom_smooth(method = stats::lm, aes(color = "NB"), se = FALSE)+  
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.1))+
+  theme(axis.text.x = element_text(size = fontsize, colour = "black"),
+        axis.text.y = element_text(size = fontsize, colour = "black"),
+        axis.title.y = element_text(face = "bold", size = fontsize),
+        axis.title.x = element_text(face = "bold", size = fontsize),
+        legend.position = "none",
+        plot.tag = element_text(size = 16, face = "bold")
+        )
+
+ggplot(FoRS_glome_order,aes(Archaeosporales,total_fresh_biomass_g_per_plant)) + 
+  labs(x="Archaeosporales", y="total_fresh_biomass_g_per_plant")+
+  geom_point() +
+  geom_smooth(method = stats::lm, aes(color = "NB"), se = FALSE)+  
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.1))+
+  theme(axis.text.x = element_text(size = fontsize, colour = "black"),
+        axis.text.y = element_text(size = fontsize, colour = "black"),
+        axis.title.y = element_text(face = "bold", size = fontsize),
+        axis.title.x = element_text(face = "bold", size = fontsize),
+        legend.position = "none",
+        plot.tag = element_text(size = 16, face = "bold")
+        )
+
+ggplot(FoRT_glome_order,aes(Archaeosporales,total_fresh_biomass_g_per_plant)) + 
+  labs(x="Archaeosporales", y="total_fresh_biomass_g_per_plant")+
+  geom_point() +
+  geom_smooth(method = stats::lm, aes(color = "NB"), se = FALSE)+  
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.1))+
+  theme(axis.text.x = element_text(size = fontsize, colour = "black"),
+        axis.text.y = element_text(size = fontsize, colour = "black"),
+        axis.title.y = element_text(face = "bold", size = fontsize),
+        axis.title.x = element_text(face = "bold", size = fontsize),
+        legend.position = "none",
+        plot.tag = element_text(size = 16, face = "bold")
+        )
+
+ggplot(FoRT_glome_order,aes(Diversisporales,total_fresh_biomass_g_per_plant)) + 
+  labs(x="Diversisporales", y="total_fresh_biomass_g_per_plant")+
+  geom_point() +
+  geom_smooth(method = stats::lm, aes(color = "NB"), se = FALSE)+  
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.1))+
+  theme(axis.text.x = element_text(size = fontsize, colour = "black"),
+        axis.text.y = element_text(size = fontsize, colour = "black"),
+        axis.title.y = element_text(face = "bold", size = fontsize),
+        axis.title.x = element_text(face = "bold", size = fontsize),
+        legend.position = "none",
+        plot.tag = element_text(size = 16, face = "bold")
+        )
+
+```
+
+seemingly, the relationship observed in FiRS dataset is biased by three datapoints, thereby analyze it again without those three points. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+FiRS_glome_order2<-subset(FiRS_glome_order, !Glomerales>200)
+summary(lmp(total_fresh_biomass_g_per_plant~Glomerales, data=FiRS_glome_order2))
+
+ggplot(FiRS_glome_order2,aes(Glomerales,total_fresh_biomass_g_per_plant)) + 
+  labs(x="Glomerales", y="total_fresh_biomass_g_per_plant")+
+  geom_point() +
+  geom_smooth(method = stats::lm, aes(color = "NB"), se = FALSE)+  
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.1))+
+  theme(axis.text.x = element_text(size = fontsize, colour = "black"),
+        axis.text.y = element_text(size = fontsize, colour = "black"),
+        axis.title.y = element_text(face = "bold", size = fontsize),
+        axis.title.x = element_text(face = "bold", size = fontsize),
+        legend.position = "none",
+        plot.tag = element_text(size = 16, face = "bold")
+        )
+
+```
+
+
 
 ## 6. Correlation between diversity of fungal community and SLs level (Fig 4)
 
-As SLs were only detected in the plant roots grown on forest soil, all correlation study with SLs performed using forest soil dataset. 
 Although we had five replicates for each experimental condition, root material was sometimes insufficient to analyze both SLs production and microbiome diversity and composition on the same sample. Therefore, three replicates were used for each analysis (total n= 48), and we used only the samples for which we had enough material to assess both SL and microbiome (n=37) for the correlation analyses between SL production and relative abundance of community. 
 
 ### 6.1. Correlation between alpha diversity and SLs level
@@ -878,32 +1054,83 @@ Subset forest soil dataset from alpha diversity measurement that I obtained earl
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
 match_alpha<-subset(fun_alpha, Soil=="Forest"&SL_analysis=="yes")
+match_alpha_RT<-subset(match_alpha, Compartment=="Root")
+match_alpha_RS<-subset(match_alpha, Compartment=="Rhizosphere")
 ```
-
 
 The correlation between alpha diversity and SLs were examined using linear model incoperating permutation test. 
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
 
-vars=4
+vars=5
 fourdo <-matrix(NA,vars,2)
 meo5ds  <-matrix(NA,vars,2)
 orb <-matrix(NA,vars,2)
 
 for(i in 1:vars) {
-  l<-lmp(match_alpha[,i]~X4DO_pmol_g, data=match_alpha)
+  l<-lmp(match_alpha_RT[,i]~X4DO_pmol_g, data=match_alpha_RT)
   fourdo[i,]<-coef(summary(l))[c(2,6)] #estimate & p value
-  l<-lmp(match_alpha[,i]~MeO5DS_pmol_g, data=match_alpha)
+  l<-lmp(match_alpha_RT[,i]~MeO5DS_pmol_g, data=match_alpha_RT)
   meo5ds[i,]<-coef(summary(l))[c(2,6)] #estimate & p value
-  l<-lmp(match_alpha[,i]~orobanchol_pmol_g, data=match_alpha)
+  l<-lmp(match_alpha_RT[,i]~orobanchol_pmol_g, data=match_alpha_RT)
   orb[i,]<-coef(summary(l))[c(2,6)] #estimate & p value
 }
 
-lmp_res<-cbind(fourdo, meo5ds, orb)
-rownames(lmp_res)<-colnames(match_alpha[1:vars])
-colnames(lmp_res)<-c("fourdo.est","fourdo.p","meo5ds.est","meo5ds.p","orb.est","orb.p")
+lmp_res_RT<-cbind(fourdo, meo5ds, orb)
+rownames(lmp_res_RT)<-colnames(match_alpha_RT[1:vars])
+colnames(lmp_res_RT)<-c("fourdo.est","fourdo.p","meo5ds.est","meo5ds.p","orb.est","orb.p")
 
-lmp_res
+lmp_res_RT
 ```
+
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+vars=5
+fourdo <-matrix(NA,vars,2)
+meo5ds  <-matrix(NA,vars,2)
+orb <-matrix(NA,vars,2)
+
+for(i in 1:vars) {
+  l<-lmp(match_alpha_RS[,i]~X4DO_pmol_g, data=match_alpha_RS)
+  fourdo[i,]<-coef(summary(l))[c(2,6)] #estimate & p value
+  l<-lmp(match_alpha_RS[,i]~MeO5DS_pmol_g, data=match_alpha_RS)
+  meo5ds[i,]<-coef(summary(l))[c(2,6)] #estimate & p value
+  l<-lmp(match_alpha_RS[,i]~orobanchol_pmol_g, data=match_alpha_RS)
+  orb[i,]<-coef(summary(l))[c(2,6)] #estimate & p value
+}
+
+lmp_res_RS<-cbind(fourdo, meo5ds, orb)
+rownames(lmp_res_RS)<-colnames(match_alpha_RS[1:vars])
+colnames(lmp_res_RS)<-c("fourdo.est","fourdo.p","meo5ds.est","meo5ds.p","orb.est","orb.p")
+
+lmp_res_RS
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+summary(lmp(shannon~orobanchol_pmol_g, data=match_alpha_RS))
+coef(summary(lmp(shannon~orobanchol_pmol_g, data=match_alpha_RS)))[c(2,6)]
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+
+fontsize=10
+
+ggplot(match_alpha_RS,aes(orobanchol_pmol_g, shannon)) + 
+  labs(x="orobanchol_pmol_g", y="shannon")+
+  geom_point() +
+  geom_smooth(method = lm, col = "red", se = FALSE)+  
+  theme(axis.text.x = element_text(size = fontsize, colour = "black"), 
+        axis.text.y = element_text(size = fontsize, colour = "black"),
+        axis.title.x = element_text(size = fontsize),
+        legend.position = "none",
+        plot.tag = element_text(size = fontsize, face = "bold")
+  )
+
+```
+
+
 
 ### 6.2. Correlation between beta diversity and SLs level (Constrained PCoA)
 
@@ -930,8 +1157,10 @@ RS.p <- 0*1:var
 set.seed(111)
 
 for(i in 1:var) {
-  RT.p[i]<-(anova.cca(capscale(match_Fo_RT[14:2840]~SLs_Fo_RT[,i], match_Fo_RT, dist="bray"), step=1000))$`Pr(>F)`[1]
-  RS.p[i]<-(anova.cca(capscale(match_Fo_RS[14:2840]~SLs_Fo_RS[,i], match_Fo_RS, dist="bray"), step=1000))$`Pr(>F)`[1]
+  RT.p[i]<-(anova.cca(capscale(match_Fo_RT[14:2840]~SLs_Fo_RT[,i], 
+                               match_Fo_RT, dist="bray"), step=1000))$`Pr(>F)`[1]
+  RS.p[i]<-(anova.cca(capscale(match_Fo_RS[14:2840]~SLs_Fo_RS[,i], 
+                               match_Fo_RS, dist="bray"), step=1000))$`Pr(>F)`[1]
 }
 
 
@@ -972,7 +1201,8 @@ Now plot CAP results
 fontsize=13
 
 # in roots
-cap<-ordinate(physeq = match_ps_Fo_RT, method = "CAP", distance = "bray", formula = ~ orobanchol_pmol_g) 
+cap<-ordinate(physeq = match_ps_Fo_RT, method = "CAP", 
+              distance = "bray", formula = ~ orobanchol_pmol_g) 
 cap_sc <- rownames_to_column(data.frame(vegan::scores(cap, display = "species")))
 cap.cut <-subset(cap_sc, (abs(CAP1))>=0.08) #cutoff value 
 arrow_map <- aes(xend = CAP1, yend= MDS1,x = 0,y = 0,shape = NULL, color=NULL)
@@ -996,7 +1226,8 @@ plot_ordination(match_ps_Fo_RT, cap, axes = c(1,2), color = "orobanchol_pmol_g")
 
 
 # in rhizosphere
-cap<-ordinate(physeq = match_ps_Fo_RS, method = "CAP", distance = "bray", formula = ~ orobanchol_pmol_g) 
+cap<-ordinate(physeq = match_ps_Fo_RS, method = "CAP", 
+              distance = "bray", formula = ~ orobanchol_pmol_g) 
 cap_sc <- rownames_to_column(data.frame(vegan::scores(cap, display = "species")))
 cap.cut <-subset(cap_sc, (abs(CAP1))>=0.08) #cutoff value 
 arrow_map <- aes(xend = CAP1, yend= MDS1,x = 0,y = 0,shape = NULL, color=NULL)
@@ -1030,15 +1261,19 @@ Filter counts not seen more than 2 times in at least 40% of the sample
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
 
 #Roots
-match_ps_Fo_RT_filt=filter_taxa(match_ps_Fo_RT, function(x) sum(x > 2) > (0.4*length(x)), TRUE) 
+match_ps_Fo_RT_filt=filter_taxa(match_ps_Fo_RT, 
+                                function(x) sum(x > 2) > (0.4*length(x)), TRUE) 
 match_Fo_RT_filt<-otu_table(match_ps_Fo_RT_filt)
-match_Fo_RT_filt<-as.data.frame(match_Fo_RT_filt[,colSums(match_Fo_RT_filt[,])>2*(dim(match_Fo_RT_filt)[1])]) 
+match_Fo_RT_filt<-as.data.frame(match_Fo_RT_filt[,colSums(match_Fo_RT_filt[,])
+                                                 >2*(dim(match_Fo_RT_filt)[1])]) 
 fun.FoRT_ASV<-cbind(sample_data(match_ps_Fo_RT_filt), match_Fo_RT_filt)
 
 #Rhizosphere
-match_ps_Fo_RS_filt=filter_taxa(match_ps_Fo_RS, function(x) sum(x > 2) > (0.4*length(x)), TRUE) 
+match_ps_Fo_RS_filt=filter_taxa(match_ps_Fo_RS, 
+                                function(x) sum(x > 2) > (0.4*length(x)), TRUE) 
 match_Fo_RS_filt<-otu_table(match_ps_Fo_RS_filt)
-match_Fo_RS_filt<-as.data.frame(match_Fo_RS_filt[,colSums(match_Fo_RS_filt[,])>2*(dim(match_Fo_RS_filt)[1])])
+match_Fo_RS_filt<-as.data.frame(match_Fo_RS_filt[,colSums(match_Fo_RS_filt[,])
+                                                 >2*(dim(match_Fo_RS_filt)[1])])
 fun.FoRS_ASV<-cbind(sample_data(match_ps_Fo_RS_filt), match_Fo_RS_filt)
 ```
 
@@ -1066,7 +1301,9 @@ for(i in 1:ns){
 rownames(RT_genus_sum)<-ag$Genus
 colnames(RT_genus_sum)<-colnames(RT_genus[,2:38])
 RT_genus_sum$percentage<-rowSums(RT_genus_sum)/sum(rowSums(RT_genus_sum))*100
-RT_major_genus<-as.data.frame(t(subset(RT_genus_sum, percentage >=0.3))) #select genera which are abundant >1%
+RT_major_genus<-as.data.frame(t(subset(RT_genus_sum, percentage >=0.3)
+                                #select genera which are abundant >1%
+                                )) 
 RT_major_genus = RT_major_genus[!row.names(RT_major_genus)%in% "percentage",]#remove percentage row
 fun.FoRT_genus = RT_major_genus[,-21] #remove unknown genus
 fun.FoRT_genus_rc<-rownames_to_column(fun.FoRT_genus)
@@ -1090,7 +1327,9 @@ for(i in 1:ns){
 rownames(RS_genus_sum)<-ag$Genus
 colnames(RS_genus_sum)<-colnames(RS_genus[,2:38])
 RS_genus_sum$percentage<-rowSums(RS_genus_sum)/sum(rowSums(RS_genus_sum))*100
-RS_major_genus<-as.data.frame(t(subset(RS_genus_sum, percentage >=0.1))) #select genera which are abundant >0.5%
+RS_major_genus<-as.data.frame(t(subset(RS_genus_sum, percentage >=0.1)
+                                #select genera which are abundant >0.5%
+                                )) 
 RS_major_genus = RS_major_genus[!row.names(RS_major_genus)%in% "percentage",]#remove percentage row
 fun.FoRS_genus = RS_major_genus[,-29] #remove unknown genus
 fun.FoRS_genus_rc<-rownames_to_column(fun.FoRS_genus)
